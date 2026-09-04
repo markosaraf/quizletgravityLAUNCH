@@ -42,12 +42,11 @@ export const metadata: Metadata = {
     "Quizlet game",
   ],
 
- // Application / authorship metadata
+  // Application / authorship metadata
   applicationName: "Quizlet Gravity",
-  authors: [{ name: "Marko Sarafijanovic (markosaraf)", url: "https://github.com/markosaraf" }],
-  creator: "Marko Sarafijanovic",
-  publisher: "Marko Sarafijanovic",
-
+  authors: [{ name: "markosaraf", url: "https://github.com/markosaraf" }],
+  creator: "markosaraf",
+  publisher: "markosaraf",
 
   // Required by Next.js for OG / Twitter image URLs to resolve to absolute URLs.
   metadataBase: new URL(siteUrl),
@@ -57,8 +56,7 @@ export const metadata: Metadata = {
     canonical: "/",
   },
 
-  // Search-engine directives baked into the HTML head. (The repo also has
-  // public/robots.txt — these two work together; this one is per-page.)
+  // Search-engine directives baked into the HTML head.
   robots: {
     index: true,
     follow: true,
@@ -72,6 +70,9 @@ export const metadata: Metadata = {
   },
 
   // OpenGraph — Facebook / LinkedIn / Slack / Discord link previews.
+  // First image is the wide 1200x630 card; second is the square 1200x1200,
+  // which some platforms (notably Google rich results, and Twitter's
+  // smaller "summary" card) prefer over the wide one.
   openGraph: {
     title: "Quizlet – Gravity Study Mode",
     description:
@@ -86,6 +87,12 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         alt: "Quizlet Gravity study mode — defend your planet from falling asteroids",
+      },
+      {
+        url: "/og-image-square.png",
+        width: 1200,
+        height: 1200,
+        alt: "Quizlet Gravity study mode — square thumbnail",
       },
     ],
   },
@@ -116,6 +123,80 @@ export const metadata: Metadata = {
   },
 };
 
+/* ----------------------------------------------------------------------------
+   JSON-LD structured data — this is what Google reads to display rich
+   results. We declare two schemas:
+
+   1. WebSite — basic site identity. Enables Google's sitelinks search box
+      and confirms the canonical homepage URL.
+   2. VideoGame — marks this as a game. This is the schema Google uses to
+      show a square thumbnail image next to certain search results
+      (the "rich result" card with an image, rating, etc.). The
+      `thumbnailUrl` field points at the square image, which is what
+      Google uses for the preview thumbnail.
+
+   Both schemas reference the same square image (1200x1200) — that's the
+   size Google prefers for rich-result thumbnails.
+---------------------------------------------------------------------------- */
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${siteUrl}/#website`,
+      url: siteUrl,
+      name: "Quizlet Gravity",
+      description:
+        "Faithful recreation of Quizlet's Gravity study mode (2020–2024). Defend your planet from falling asteroids by typing the correct answers.",
+      publisher: { "@id": `${siteUrl}/#organization` },
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${siteUrl}/?q={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+    {
+      "@type": "Organization",
+      "@id": `${siteUrl}/#organization`,
+      name: "Quizlet Gravity",
+      url: siteUrl,
+      logo: {
+        "@type": "ImageObject",
+        url: `${siteUrl}/logo.svg`,
+        width: 256,
+        height: 256,
+      },
+    },
+    {
+      "@type": "VideoGame",
+      "@id": `${siteUrl}/#game`,
+      name: "Quizlet Gravity",
+      description:
+        "Faithful recreation of Quizlet's Gravity study mode (2020–2024): defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+      url: siteUrl,
+      applicationCategory: "Game",
+      genre: ["Educational", "Typing", "Arcade"],
+      gamePlatform: ["Web Browser", "Personal Computer", "Mobile Phone"],
+      operatingSystem: "Any (web browser)",
+      image: `${siteUrl}/og-image-square.png`,
+      thumbnailUrl: `${siteUrl}/og-image-square.png`,
+      screenshot: `${siteUrl}/og-image.png`,
+      publisher: { "@id": `${siteUrl}/#organization` },
+      author: {
+        "@type": "Person",
+        name: "markosaraf",
+        url: "https://github.com/markosaraf",
+      },
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+        availability: "https://schema.org/InStock",
+      },
+    },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -124,6 +205,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
+        {/* JSON-LD structured data for Google rich results. Rendered as a
+            raw <script> tag — Next.js does not process this; it goes
+            straight into the HTML <head> when in app router. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         {children}
         <Toaster />
         <SpeedInsights />
