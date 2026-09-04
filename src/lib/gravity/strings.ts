@@ -87,8 +87,7 @@ export const STRINGS = {
       'None of the terms in this set can be studied with the current settings. Try answering with the other side of the terms.',
     back_to_set_button: 'Back',
   },
-  desktop_blocker: '', // removed — game is playable at any window size (mobile layout in top bar)
-  mobile_blocker: 'Gravity is not supported on mobile devices.',
+
   import: {
     title: 'Quizlet Gravity',
     subtitle:
