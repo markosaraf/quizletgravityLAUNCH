@@ -83,6 +83,42 @@ export function GravityApp() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [started, data]);
 
+  // ══════════════════════════════════════════════════════════════════
+  // ★ FIX 1 (mobile): instant scroll to the top after each correct answer
+  // ══════════════════════════════════════════════════════════════════
+  // On mobile, as soon as the user types, the on-screen keyboard opens and
+  // the browser auto-scrolls the page down to the bottom-anchored typing
+  // field (TypingPrompt already uses focus({ preventScroll: true }), but
+  // that only suppresses the scroll at focus-time — it cannot stop the
+  // "scroll focused element into view" that happens when the keyboard
+  // opens/resizes the viewport). The user then can't see the asteroid
+  // appear at the top of the play area.
+  //
+  // This effect watches the score: every time it INCREASES — i.e. a correct
+  // word was submitted (wrong answers only subtract points:
+  // INCORRECT_POINTS = -10 in constants.ts) — the page instantly jumps to
+  // the top so the newly spawned asteroid is visible. Scrolling down to the
+  // typing field still works exactly as before.
+  const prevPointsRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!started || !data) {
+      // back on the import screen / new set — reset the tracker so the
+      // next game starts clean (points reset to 0 on setup)
+      prevPointsRef.current = null;
+      return;
+    }
+    const prev = prevPointsRef.current;
+    prevPointsRef.current = data.points;
+    if (prev !== null && data.points > prev) {
+      // Instant jump (no smooth scrolling — window is the scroll container).
+      // The extra scrollTop resets cover older mobile Safari versions where
+      // <html>/<body> track their own scroll position.
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }, [started, data]);
+
   const handleNewSet = useCallback(() => {
     gravityStore.dispose();
     setStarted(false);
