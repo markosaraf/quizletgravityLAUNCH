@@ -42,11 +42,12 @@ export const metadata: Metadata = {
     "Quizlet game",
   ],
 
-  // Application / authorship metadata
+ // Application / authorship metadata
   applicationName: "Quizlet Gravity",
-  authors: [{ name: "markosaraf", url: "https://github.com/markosaraf" }],
-  creator: "markosaraf",
-  publisher: "markosaraf",
+  authors: [{ name: "Marko Sarafijanovic (markosaraf)", url: "https://github.com/markosaraf" }],
+  creator: "Marko Sarafijanovic",
+  publisher: "Marko Sarafijanovic",
+
 
   // Required by Next.js for OG / Twitter image URLs to resolve to absolute URLs.
   metadataBase: new URL(siteUrl),
