@@ -24,7 +24,8 @@ function CopyTermViewBase({
 
   useEffect(() => {
     const t = setTimeout(() => {
-      inputRef.current?.focus();
+      // preventScroll: no mobile auto-scroll-to-input jump when the modal opens
+      inputRef.current?.focus({ preventScroll: true });
       // place caret at end
       const el = inputRef.current;
       if (el) el.setSelectionRange(el.value.length, el.value.length);
