@@ -598,7 +598,7 @@ export class GravityStore {
     if (!d) return;
     const luid = this._getTermLuidFromLiveTermId(liveTermId);
     d.termLuidToMissedCount[luid] = (d.termLuidToMissedCount[luid] ?? 0) + 1;
-    d.missedTermsToSide[luid] = this.data.liveTerms[liveTermId].side;
+    d.missedTermsToSide[luid] = d.liveTerms[liveTermId].side;
     d.currentLevelMissedTermLuids.push(luid);
   }
 
