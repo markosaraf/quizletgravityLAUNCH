@@ -693,16 +693,33 @@
 }
 
 .GravitySiteHeader-logoMark {
+  align-items: center;
   background: var(--twilight-500);
   border-radius: 0.5rem;
-  color: #fff;
-  font-size: 1.5rem;
-  font-weight: 700;
+  display: inline-flex;
   height: 2rem;
-  line-height: 2rem;
-  text-align: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
   width: 2rem;
 }
+
+/* SVG-based Q inside the logoMark. Two <img>s are rendered (gold + white);
+   CSS swaps visibility based on the parent [data-theme] attribute on <html>. */
+.GravitySiteHeader-logoMark-gold,
+.GravitySiteHeader-logoMark-white {
+  display: block;
+  height: 1.5rem;
+  width: 1.5rem;
+}
+
+/* Default (dark mode): show white Q on the blue square, hide gold Q. */
+.GravitySiteHeader-logoMark-gold   { display: none; }
+.GravitySiteHeader-logoMark-white { display: block; }
+
+/* Light mode: swap — show gold Q on the white square, hide white Q. */
+[data-theme="light"] .GravitySiteHeader-logoMark-gold   { display: block; }
+[data-theme="light"] .GravitySiteHeader-logoMark-white { display: none; }
 
 .GravitySiteHeader-setTitle {
   color: #d5dbe8;
@@ -2133,10 +2150,10 @@
   color: #fff;
 }
 
-/* The "Q" box — invert to white bg + blue text so it stands out on the blue header */
+/* The "Q" box — invert to white bg so it stands out on the blue header.
+   The gold Q SVG is shown inside (visibility swap handled by the rules above). */
 [data-theme="light"] .GravitySiteHeader-logoMark {
   background: #fff;
-  color: var(--twilight-500);
 }
 
 [data-theme="light"] .GravitySiteHeader-logoText {
