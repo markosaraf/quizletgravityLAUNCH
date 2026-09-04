@@ -6,15 +6,12 @@ import { gravityStore } from '@/lib/gravity/store';
 import type { GameData, GravitySet, GravityTerm } from '@/lib/gravity/types';
 import { getStoredPartialAnswer } from '@/lib/gravity/parse';
 import { GameplayView, useGameplaySize } from './GameplayView';
-import { ModeControls, ScreenSizeBlocker, SiteHeader } from './ModeControls';
+import { ModeControls, SiteHeader } from './ModeControls';
 import { StartView, GameOverView, type LeaderboardEntry } from './StartScreens';
 import { ImportScreen } from './ImportScreen';
 
-const MIN_WINDOW_WIDTH = 480;
-
 export function GravityApp() {
   const [started, setStarted] = useState(false);
-  const [mobileBlocked, setMobileBlocked] = useState(false);
   const gameplayRef = useRef<HTMLDivElement>(null);
   const size = useGameplaySize(gameplayRef, started);
   const data = useSyncExternalStore(
@@ -53,18 +50,6 @@ export function GravityApp() {
       setCurrentTryIndex(tryIndex);
     }
   }
-
-  // detect mobile (original GravityScreenSizeBlocker) — async to satisfy
-  // the set-state-in-effect rule
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const isMobile =
-        /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) &&
-        window.innerWidth < MIN_WINDOW_WIDTH;
-      if (isMobile) setMobileBlocked(true);
-    }, 0);
-    return () => clearTimeout(t);
-  }, []);
 
   const handleStartSet = useCallback((set: GravitySet, terms: GravityTerm[]) => {
     gravityStore.setup({
@@ -110,11 +95,8 @@ export function GravityApp() {
     return <ImportScreen onStart={handleStartSet} />;
   }
 
-  // Desktop blocker was removed — the game is playable at any window size
-  // (mobile layout in the top bar handles narrow widths). Only the
-  // mobile-device blocker remains (see ScreenSizeBlocker).
-  const showBlocker = mobileBlocked;
-
+  // No screen-size/device blockers — the game is playable everywhere
+  // (mobile layout in the top bar handles narrow widths).
   return (
     <div className="gravity-root">
       <SiteHeader
@@ -184,8 +166,6 @@ export function GravityApp() {
                 onNewSet={handleNewSet}
               />
             ) : null}
-
-            {showBlocker ? <ScreenSizeBlocker isMobile={mobileBlocked} /> : null}
           </div>
         </div>
       </div>
