@@ -23,13 +23,20 @@ function TypingPromptBase({
   const wantShown = isFreeFall || gameState === GAME_STATES.LEVEL_UP;
   const mounted = useDelayedUnmount(wantShown, 400);
 
-  // keep the input focused during gameplay (original behavior)
+  // keep the input focused during gameplay (original behavior).
+  // focus({ preventScroll: true }) stops mobile browsers from auto-scrolling
+  // the page down to the typing field every time focus is (re-)acquired.
+  // Depends on `mounted` so the ref is guaranteed to be attached when the
+  // focus timer fires (covers the initial mount after the enter-transition).
   useEffect(() => {
-    if (isFreeFall) {
-      const t = setTimeout(() => inputRef.current?.focus(), 0);
+    if (isFreeFall && mounted) {
+      const t = setTimeout(
+        () => inputRef.current?.focus({ preventScroll: true }),
+        0,
+      );
       return () => clearTimeout(t);
     }
-  }, [isFreeFall]);
+  }, [isFreeFall, mounted]);
 
   if (!mounted) return null;
 
@@ -37,9 +44,11 @@ function TypingPromptBase({
     <div className={`GravityTypingPrompt${wantShown ? ' is-showingInput' : ''}`}>
       <div className="GravityTypingPrompt-inner">
         <div className="GravityTypingPrompt-inputWrapper">
+          {/* no autoFocus: it calls focus() without preventScroll, which
+              auto-scrolls to the field on mobile. The effect above focuses
+              the input (without scrolling) once it is mounted. */}
           <textarea
             ref={inputRef}
-            autoFocus
             autoCapitalize="none"
             autoComplete="off"
             autoCorrect="off"
@@ -56,9 +65,13 @@ function TypingPromptBase({
               }
             }}
             onBlur={() => {
-              // refocus so gameplay never loses the input (original behavior)
+              // refocus so gameplay never loses the input (original behavior);
+              // preventScroll avoids the mobile auto-scroll-to-input jump
               if (isFreeFall) {
-                setTimeout(() => inputRef.current?.focus(), 0);
+                setTimeout(
+                  () => inputRef.current?.focus({ preventScroll: true }),
+                  0,
+                );
               }
             }}
           />
