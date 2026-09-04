@@ -18,6 +18,9 @@ interface StartScreenProps {
   onStart: () => void;
   onOptions: () => void;
   onDirections: () => void;
+  onDifficultyChange: (d: Difficulty) => void;
+  onSideChange: (s: Side) => void;
+  onPartialChange: (b: boolean) => void;
   onSelectedOnlyChange?: (selectedOnly: boolean) => void;
 }
 
