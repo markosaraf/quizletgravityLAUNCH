@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Favicon — Next.js auto-serves src/app/icon.{svg,png} as the browser tab icon. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Q">
+  <!-- Background: blue rounded square -->
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+
+  <!-- Q outer ring -->
+  <circle cx="32" cy="30" r="16" fill="none" stroke="#ffffff" stroke-width="6"/>
+
+  <!-- Q tail -->
+  <line x1="43" y1="42" x2="54" y2="53" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+</svg>
