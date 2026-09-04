@@ -10,78 +10,6 @@ import { ModeControls, SiteHeader } from './ModeControls';
 import { StartView, GameOverView, type LeaderboardEntry } from './StartScreens';
 import { ImportScreen } from './ImportScreen';
 
-// ══════════════════════════════════════════════════════════════════
-// ★ FIX (mobile): helper — jump to the ABSOLUTE top and PIN there
-// ══════════════════════════════════════════════════════════════════
-// Why a plain window.scrollTo(0, 0) is NOT enough on mobile:
-// after submitting a correct answer, the typing field is still focused and
-// the on-screen keyboard is still open. Mobile browsers actively "protect"
-// the focused field — they re-assert "scroll the focused element into
-// view" while the keyboard settles / the viewport resizes / the caret
-// repositions, and that can silently REVERT a programmatic scroll made in
-// the same interaction. Result: the page never visibly reaches the top.
-//
-// The pin below re-asserts scrollTop = 0 on every animation frame for
-// ~1.5s, which outlasts all of the browser's keyboard-open adjustments AND
-// covers the moment the next asteroid spawns (~1s after a correct answer).
-// Any touch / click / wheel / key press cancels the pin INSTANTLY, so
-// scrolling down to the typing field — or just typing the next answer —
-// works exactly as before (never fights the user's finger).
-const TOP_PIN_MS = 1500;
-
-function jumpToTopAndPin() {
-  // window is the page scroller; the extra scrollTop resets cover older
-  // mobile Safari versions where <html>/<body> track their own position.
-  const forceTop = () => {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-  };
-  forceTop();
-
-  // ANY direct user input cancels the pin — never fight the user's finger.
-  // (touch/pointer/wheel = they are scrolling down to the typing field;
-  // keydown = they are typing the next answer and the browser may scroll
-  // to the caret, which is the accepted behavior.)
-  let cancelled = false;
-  const events = [
-    'touchstart',
-    'pointerdown',
-    'mousedown',
-    'wheel',
-    'keydown',
-  ] as const;
-  const cancel = () => {
-    cancelled = true;
-    for (const ev of events) window.removeEventListener(ev, cancel);
-  };
-  for (const ev of events) {
-    window.addEventListener(ev, cancel, { once: true, passive: true });
-  }
-
-  // Re-assert top on every animation frame for TOP_PIN_MS. Mobile browsers
-  // revert programmatic scrolls asynchronously (keyboard resize, caret
-  // scroll-into-view), so a single scrollTo call is not enough — every
-  // attempted scroll-away during the pin gets an instant jump back to 0.
-  const startedAt = performance.now();
-  const pin = () => {
-    if (cancelled) return;
-    if (performance.now() - startedAt >= TOP_PIN_MS) {
-      for (const ev of events) window.removeEventListener(ev, cancel);
-      return;
-    }
-    if (
-      window.scrollY !== 0 ||
-      document.documentElement.scrollTop !== 0 ||
-      document.body.scrollTop !== 0
-    ) {
-      forceTop();
-    }
-    requestAnimationFrame(pin);
-  };
-  requestAnimationFrame(pin);
-}
-
 export function GravityApp() {
   const [started, setStarted] = useState(false);
   const gameplayRef = useRef<HTMLDivElement>(null);
@@ -156,15 +84,21 @@ export function GravityApp() {
   }, [started, data]);
 
   // ══════════════════════════════════════════════════════════════════
-  // ★ FIX (mobile): scroll to the ABSOLUTE top on each score increase
+  // ★ FIX 1 (mobile): instant scroll to the top after each correct answer
   // ══════════════════════════════════════════════════════════════════
+  // On mobile, as soon as the user types, the on-screen keyboard opens and
+  // the browser auto-scrolls the page down to the bottom-anchored typing
+  // field (TypingPrompt already uses focus({ preventScroll: true }), but
+  // that only suppresses the scroll at focus-time — it cannot stop the
+  // "scroll focused element into view" that happens when the keyboard
+  // opens/resizes the viewport). The user then can't see the asteroid
+  // appear at the top of the play area.
+  //
   // This effect watches the score: every time it INCREASES — i.e. a correct
   // word was submitted (wrong answers only subtract points:
-  // INCORRECT_POINTS = -10 in constants.ts) — the page jumps to the top and
-  // is PINNED there for ~1.5s via jumpToTopAndPin() above, so the newly
-  // spawned asteroid is visible and the browser cannot scroll straight
-  // back down to the typing field. Scrolling down to the typing field still
-  // works exactly as before (the pin yields to any touch / key press).
+  // INCORRECT_POINTS = -10 in constants.ts) — the page instantly jumps to
+  // the top so the newly spawned asteroid is visible. Scrolling down to the
+  // typing field still works exactly as before.
   const prevPointsRef = useRef<number | null>(null);
   useEffect(() => {
     if (!started || !data) {
@@ -176,7 +110,12 @@ export function GravityApp() {
     const prev = prevPointsRef.current;
     prevPointsRef.current = data.points;
     if (prev !== null && data.points > prev) {
-      jumpToTopAndPin();
+      // Instant jump (no smooth scrolling — window is the scroll container).
+      // The extra scrollTop resets cover older mobile Safari versions where
+      // <html>/<body> track their own scroll position.
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
     }
   }, [started, data]);
 
