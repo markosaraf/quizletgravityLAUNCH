@@ -150,7 +150,22 @@ export function SiteHeader({
   return (
     <header className="GravitySiteHeader">
       <div className="GravitySiteHeader-logo">
-        <span className="GravitySiteHeader-logoMark">Q</span>
+        <span className="GravitySiteHeader-logoMark" aria-label="Q">
+          {/* Light mode shows the gold Q; dark mode shows the white Q.
+              CSS swaps visibility based on [data-theme] on <html>. */}
+          <img
+            src="/quizlet-q-logo-gold.svg"
+            alt=""
+            aria-hidden="true"
+            className="GravitySiteHeader-logoMark-gold"
+          />
+          <img
+            src="/quizlet-q-logo-white.svg"
+            alt=""
+            aria-hidden="true"
+            className="GravitySiteHeader-logoMark-white"
+          />
+        </span>
         <span className="GravitySiteHeader-logoText">Quizlet</span>
       </div>
       <div className="GravitySiteHeader-setTitle">{title}</div>
