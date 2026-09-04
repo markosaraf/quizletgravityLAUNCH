@@ -13,16 +13,8 @@ import { ImportScreen } from './ImportScreen';
 // ══════════════════════════════════════════════════════════════════
 // ★ FIX (mobile): helper — jump to the ABSOLUTE top and PIN there
 // ══════════════════════════════════════════════════════════════════
-// Why a plain window.scrollTo(0, 0) is NOT enough on mobile:
-// after submitting a correct answer, the typing field is still focused and
-// the on-screen keyboard is still open. Mobile browsers actively "protect"
-// the focused field — they re-assert "scroll the focused element into
-// view" while the keyboard settles / the viewport resizes / the caret
-// repositions, and that can silently REVERT a programmatic scroll made in
-// the same interaction. Result: the page never visibly reaches the top.
-//
-// The pin below re-asserts scrollTop = 0 on every animation frame for
-// ~1.5s, which outlasts all of the browser's keyboard-open adjustments AND
+// The pin re-asserts scrollTop = 0 on every animation frame for ~1.5s,
+// which outlasts the browser's keyboard-open/close scroll adjustments AND
 // covers the moment the next asteroid spawns (~1s after a correct answer).
 // Any touch / click / wheel / key press cancels the pin INSTANTLY, so
 // scrolling down to the typing field — or just typing the next answer —
@@ -41,8 +33,7 @@ function jumpToTopAndPin() {
 
   // ANY direct user input cancels the pin — never fight the user's finger.
   // (touch/pointer/wheel = they are scrolling down to the typing field;
-  // keydown = they are typing the next answer and the browser may scroll
-  // to the caret, which is the accepted behavior.)
+  // keydown = they are typing the next answer.)
   let cancelled = false;
   const events = [
     'touchstart',
@@ -80,6 +71,25 @@ function jumpToTopAndPin() {
     requestAnimationFrame(pin);
   };
   requestAnimationFrame(pin);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ★ FIX (mobile): device helper — is the primary input a finger?
+// ══════════════════════════════════════════════════════════════════
+// 'pointer: coarse' = phones / tablets where typing happens on the virtual
+// keyboard. Those are exactly the browsers that scroll-lock the page to the
+// focused typing field while the keyboard is open. Desktops (fine pointer)
+// keep the old always-focused behavior.
+function isCoarsePointerDevice() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      return true;
+    }
+  } catch {
+    // very old browser without matchMedia — fall through
+  }
+  return 'ontouchstart' in window;
 }
 
 export function GravityApp() {
@@ -162,9 +172,17 @@ export function GravityApp() {
   // word was submitted (wrong answers only subtract points:
   // INCORRECT_POINTS = -10 in constants.ts) — the page jumps to the top and
   // is PINNED there for ~1.5s via jumpToTopAndPin() above, so the newly
-  // spawned asteroid is visible and the browser cannot scroll straight
-  // back down to the typing field. Scrolling down to the typing field still
-  // works exactly as before (the pin yields to any touch / key press).
+  // spawned asteroid is visible.
+  //
+  // ★ THE MISSING PIECE: releasing the typing field BEFORE the jump. While
+  // the textarea is focused with the keyboard open, mobile browsers
+  // scroll-lock the page to that field — they re-assert "scroll the focused
+  // element into view" after every scroll we make (this is why the page
+  // used to pin to the typing field on EVERY submission, correct or not).
+  // Blurring the field closes the keyboard and removes the scroll-lock, so
+  // the jump + pin finally wins and HOLDS the top. On mobile the user taps
+  // the field again when they want to type (keyboard opens and scrolls to
+  // it, as before). Desktop keeps focus so continuous typing still works.
   const prevPointsRef = useRef<number | null>(null);
   useEffect(() => {
     if (!started || !data) {
@@ -176,6 +194,12 @@ export function GravityApp() {
     const prev = prevPointsRef.current;
     prevPointsRef.current = data.points;
     if (prev !== null && data.points > prev) {
+      // ★ mobile: RELEASE the typing field first (keyboard closes,
+      // scroll-lock released), THEN jump + pin to the absolute top.
+      if (isCoarsePointerDevice()) {
+        const active = document.activeElement as HTMLElement | null;
+        if (active && active.tagName === 'TEXTAREA') active.blur();
+      }
       jumpToTopAndPin();
     }
   }, [started, data]);
