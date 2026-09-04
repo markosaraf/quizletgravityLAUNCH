@@ -1688,11 +1688,11 @@
 }
 
 [data-theme="light"] .GravityImportView-title {
-  color: #1a1a1a;
+  color: #fff;
 }
 
 [data-theme="light"] .GravityImportView-subtitle {
-  color: #4a4a4a;
+  color: var(--gray-400);
 }
 
 /* --- The import card itself: white with 88% opacity (same as dark card's
