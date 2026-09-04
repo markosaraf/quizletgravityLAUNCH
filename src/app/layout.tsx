@@ -16,15 +16,19 @@ export const metadata: Metadata = {
     "asteroids",
   ],
   icons: {
-    // Next.js auto-serves src/app/icon.svg and src/app/apple-icon.png, but we
-    // also set them explicitly here so the <link> tags are deterministic.
+    // Safari does not support SVG favicons (WebKit bug 179014) and caches
+    // whatever it finds (or doesn't find) essentially forever. So:
+    //  - serve favicon.ico + PNGs FIRST so Safari always has a usable icon
+    //  - keep the SVG last as an enhancement for Chrome/Edge/Firefox
     icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
       { url: "/icon.svg", type: "image/svg+xml" },
     ],
     apple: [
       { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
     ],
-    shortcut: ["/icon.svg"],
   },
 };
 
