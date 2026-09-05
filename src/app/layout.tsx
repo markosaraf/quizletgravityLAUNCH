@@ -13,12 +13,12 @@ const siteUrl =
 
 export const metadata: Metadata = {
   // Browser-tab title + Google search result headline (the blue clickable line)
-  title: "Quizlet – Gravity Study Mode",
+  title: "Quizlet – Gravity Mode",
 
   // Meta description — Google search result grey snippet (~155 chars is the
   // sweet spot; this one is ~210 chars and Google may truncate it).
   description:
-    "Faithful recreation of Quizlet's Gravity study mode (2020–2024): defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+    "Quizlet's Gravity  mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
 
   // Meta keywords — Google ignores these for ranking, but Bing / Yandex /
   // some site-search engines still read them. Compound phrases people
@@ -44,9 +44,9 @@ export const metadata: Metadata = {
 
   // Application / authorship metadata
   applicationName: "Quizlet Gravity",
-  authors: [{ name: "markosaraf", url: "https://github.com/markosaraf" }],
-  creator: "markosaraf",
-  publisher: "markosaraf",
+  authors: [{ name: " Marko Sarafijanovic (markosaraf)", url: "https://github.com/markosaraf" }],
+  creator: "Marko Sarafijanovic",
+  publisher: "Marko Sarafijanovic",
 
   // Required by Next.js for OG / Twitter image URLs to resolve to absolute URLs.
   metadataBase: new URL(siteUrl),
@@ -74,9 +74,9 @@ export const metadata: Metadata = {
   // which some platforms (notably Google rich results, and Twitter's
   // smaller "summary" card) prefer over the wide one.
   openGraph: {
-    title: "Quizlet – Gravity Study Mode",
+    title: "Quizlet – Gravity Mode",
     description:
-      "Faithful recreation of Quizlet's Gravity study mode (2020–2024): defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+      "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
     type: "website",
     url: siteUrl,
     siteName: "Quizlet Gravity",
@@ -86,13 +86,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Quizlet Gravity study mode — defend your planet from falling asteroids",
+        alt: "Quizlet Gravity mode — defend your planet from falling asteroids",
       },
       {
         url: "/og-image-square.png",
         width: 1200,
         height: 1200,
-        alt: "Quizlet Gravity study mode — square thumbnail",
+        alt: "Quizlet Gravity mode — square thumbnail",
       },
     ],
   },
@@ -100,7 +100,7 @@ export const metadata: Metadata = {
   // Twitter / X card preview.
   twitter: {
     card: "summary_large_image",
-    title: "Quizlet – Gravity Study Mode",
+    title: "Quizlet – Gravity Mode",
     description:
       "Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
     images: ["/og-image.png"],
@@ -147,7 +147,7 @@ const jsonLd = {
       url: siteUrl,
       name: "Quizlet Gravity",
       description:
-        "Faithful recreation of Quizlet's Gravity study mode (2020–2024). Defend your planet from falling asteroids by typing the correct answers.",
+        "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
       publisher: { "@id": `${siteUrl}/#organization` },
       potentialAction: {
         "@type": "SearchAction",
@@ -172,7 +172,7 @@ const jsonLd = {
       "@id": `${siteUrl}/#game`,
       name: "Quizlet Gravity",
       description:
-        "Faithful recreation of Quizlet's Gravity study mode (2020–2024): defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+        "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
       url: siteUrl,
       applicationCategory: "Game",
       genre: ["Educational", "Typing", "Arcade"],
