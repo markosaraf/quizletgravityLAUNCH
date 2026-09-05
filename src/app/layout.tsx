@@ -4,21 +4,70 @@ import { Toaster } from "@/components/ui/toaster";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 /* ----------------------------------------------------------------------------
-   Site URL — set NEXT_PUBLIC_SITE_URL in your Vercel project settings (or .env)
-   to your deployed domain, e.g. https://quizletgravity.vercel.app.
-   Falls back to the placeholder below if unset so the build doesn't crash.
+   YOUR SITE URL — what this is and why it matters
+
+   This is the full public address of your deployed site — e.g.
+   https://quizlet-gravity.vercel.app or https://quizletgravity.com.
+
+   WHY IT MATTERS:
+   When you share your site on Twitter / Facebook / LinkedIn / Slack, those
+   platforms send a crawler to your page to fetch a preview image. They
+   look at the `og:image` HTML tag, which says "/og-image.png" — a RELATIVE
+   url. The crawler doesn't know what domain to fetch that from. Next.js
+   uses this `siteUrl` value to convert "/og-image.png" into the full
+   "https://[your-domain]/og-image.png" the crawler can actually fetch.
+
+   If you skip this, Next.js falls back to the placeholder below — a URL
+   that doesn't actually exist. That's exactly why opengraph.xyz says
+   "Failed to fetch image: Not Found": it's trying to fetch the image
+   from a made-up URL.
+
+   Pick ONE of these two options:
+
+   OPTION A (Vercel env var — recommended):
+     1. Vercel → your project → Settings → Environment Variables
+     2. Add a variable:
+          Key         = NEXT_PUBLIC_SITE_URL
+          Value       = your real deployed URL
+                        (e.g. https://quizlet-gravity.vercel.app)
+          Environment = tick Production, Preview, Development
+     3. Redeploy (Deployments → ⋯ next to latest → Redeploy)
+     The line below will pick up the env var automatically — leave it as-is.
+
+   OPTION B (hard-code — simpler, no Vercel clicking):
+     Replace the URL in the parentheses on the line below with your real
+     deployed URL. Keep the quotes, no trailing slash, no path after the
+     domain. Example: "https://quizlet-gravity-markosaraf.vercel.app"
 ---------------------------------------------------------------------------- */
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizletgravity.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.quizletgravity.com";
+
+/* ----------------------------------------------------------------------------
+   SEO strings — broken out so we can tune length per platform:
+
+   TITLE_LONG  → ~51 chars. Used for the browser tab + Google SERP headline.
+                 Google shows ~50-60 chars before truncating with "…".
+   TITLE_SHORT → ~22 chars. Used for og:title + twitter:title. Social
+                 platforms show less than Google, so a shorter title looks
+                 cleaner in Twitter/Facebook/Slack cards.
+   DESC_LONG   → ~147 chars. Used for the Google search result snippet AND
+                 JSON-LD structured data. Within Google's display range.
+   DESC_SHORT  → ~113 chars. Used for og:description + twitter:description.
+                 Mobile social previews truncate around ~125 chars.
+---------------------------------------------------------------------------- */
+const TITLE_LONG = "Quizlet – Gravity Mode | Type to Defend Your Planet";
+const TITLE_SHORT = "Quizlet – Gravity Mode";
+const DESC_LONG =
+  "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.";
+const DESC_SHORT =
+  "Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.";
 
 export const metadata: Metadata = {
-  // Browser-tab title + Google search result headline (the blue clickable line)
-  title: "Quizlet – Gravity Mode",
+  // Browser-tab title + Google search result headline
+  title: TITLE_LONG,
 
-  // Meta description — Google search result grey snippet (~155 chars is the
-  // sweet spot; this one is ~210 chars and Google may truncate it).
-  description:
-    "Quizlet's Gravity  mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+  // Google search result grey snippet — ~147 chars, within Google's range
+  description: DESC_LONG,
 
   // Meta keywords — Google ignores these for ranking, but Bing / Yandex /
   // some site-search engines still read them. Compound phrases people
@@ -44,7 +93,7 @@ export const metadata: Metadata = {
 
   // Application / authorship metadata
   applicationName: "Quizlet Gravity",
-  authors: [{ name: " Marko Sarafijanovic (markosaraf)", url: "https://github.com/markosaraf" }],
+  authors: [{ name: "Marko Sarafijanovic (markosaraf)", url: "https://github.com/markosaraf" }],
   creator: "Marko Sarafijanovic",
   publisher: "Marko Sarafijanovic",
 
@@ -74,9 +123,8 @@ export const metadata: Metadata = {
   // which some platforms (notably Google rich results, and Twitter's
   // smaller "summary" card) prefer over the wide one.
   openGraph: {
-    title: "Quizlet – Gravity Mode",
-    description:
-      "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+    title: TITLE_SHORT,
+    description: DESC_SHORT, // ~113 chars — fits mobile previews
     type: "website",
     url: siteUrl,
     siteName: "Quizlet Gravity",
@@ -100,9 +148,8 @@ export const metadata: Metadata = {
   // Twitter / X card preview.
   twitter: {
     card: "summary_large_image",
-    title: "Quizlet – Gravity Mode",
-    description:
-      "Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+    title: TITLE_SHORT,
+    description: DESC_SHORT,
     images: ["/og-image.png"],
   },
 
@@ -146,8 +193,7 @@ const jsonLd = {
       "@id": `${siteUrl}/#website`,
       url: siteUrl,
       name: "Quizlet Gravity",
-      description:
-        "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+      description: DESC_LONG,
       publisher: { "@id": `${siteUrl}/#organization` },
       potentialAction: {
         "@type": "SearchAction",
@@ -171,8 +217,7 @@ const jsonLd = {
       "@type": "VideoGame",
       "@id": `${siteUrl}/#game`,
       name: "Quizlet Gravity",
-      description:
-        "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.",
+      description: DESC_LONG,
       url: siteUrl,
       applicationCategory: "Game",
       genre: ["Educational", "Typing", "Arcade"],
