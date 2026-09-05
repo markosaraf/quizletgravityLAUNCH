@@ -54,4 +54,4 @@ User-agent: *
 Allow: /
 
 # ---- Sitemap ----
-Sitemap: https://quizletgravity.com/sitemap.xml
+Sitemap: https://www.quizletgravity.com/sitemap.xml
