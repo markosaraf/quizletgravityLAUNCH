@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { GAME_FEATURES } from "./seo-content";
 
 /* ----------------------------------------------------------------------------
    YOUR SITE URL — see explanation in the previous version.
@@ -23,25 +24,16 @@ const DESC_SHORT =
   "Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.";
 
 /* ----------------------------------------------------------------------------
+   Entity dates — used in JSON-LD (datePublished / dateModified).
+   datePublished = repo/site launch date; dateModified = last content
+   change. Update DATE_MODIFIED whenever you change on-page content.
+---------------------------------------------------------------------------- */
+const DATE_PUBLISHED = "2026-09-04"; // first commit / site launch
+const DATE_MODIFIED = "2026-09-06";  // this schema + SEO content update
+
+/* ----------------------------------------------------------------------------
    OG IMAGE — different image for LinkedIn vs. everywhere else.
-
-   WHY THIS IS NEEDED:
-   The OpenGraph standard has only one `og:image` tag. Every platform
-   (Facebook, Twitter, LinkedIn, Slack, Discord, Teams) reads the same
-   value. To show a different image ONLY on LinkedIn, we detect LinkedIn's
-   crawler by its User-Agent string (starts with "LinkedInBot") at request
-   time and swap the image URL.
-
-   WHY THIS WORKS:
-   When you paste your URL into LinkedIn, LinkedIn's bot fetches the page
-   HTML to read the OG tags. That bot's User-Agent is "LinkedInBot/1.0
-   (compatible; ...)". We sniff for it and serve a different `og:image`
-   URL in the HTML LinkedIn sees. Every other platform gets the default.
-
-   CAVEAT:
-   LinkedIn caches the OG preview for ~7 days. After deploying, use the
-   LinkedIn Post Inspector (https://www.linkedin.com/post-inspector/)
-   to force LinkedIn to re-fetch your page and pick up the new image.
+   [... unchanged logic from your current file ...]
 ---------------------------------------------------------------------------- */
 const OG_IMAGE_DEFAULT = "/og-image.png";
 const OG_IMAGE_LINKEDIN = "/og-image-linkedin.png";
@@ -53,26 +45,15 @@ function isLinkedInCrawler(userAgent: string): boolean {
 }
 
 /* ----------------------------------------------------------------------------
-   generateMetadata() — replaces the static `export const metadata` so we
-   can read the request's User-Agent header at request time. This is the
-   only way to differentiate OG images per platform.
-
-   This makes the page's metadata dynamic per-request, which means the
-   homepage can no longer be statically prerendered. For this app that's
-   fine — the page is already a client-side game ('use client' in page.tsx),
-   so there's no real performance cost.
+   generateMetadata() — [... unchanged from your current file ...]
 ---------------------------------------------------------------------------- */
 export async function generateMetadata(): Promise<Metadata> {
   const headersList = await headers();
   const userAgent = headersList.get("user-agent") ?? "";
   const isLinkedIn = isLinkedInCrawler(userAgent);
 
-  // LinkedIn sees the LinkedIn-specific image; everyone else sees the default.
   const ogImage = isLinkedIn ? OG_IMAGE_LINKEDIN : OG_IMAGE_DEFAULT;
 
-  // The square image is only useful for Google rich results (which are read
-  // by Googlebot, not LinkedInBot) — so we skip it for LinkedIn to keep
-  // the OG image list focused.
   const ogImages: NonNullable<NonNullable<Metadata["openGraph"]>["images"]> = [
     {
       url: ogImage,
@@ -91,7 +72,6 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   return {
-    // Browser-tab title + Google SERP headline
     title: TITLE_LONG,
     description: DESC_LONG,
     keywords: [
@@ -138,10 +118,6 @@ export async function generateMetadata(): Promise<Metadata> {
       locale: "en_US",
       images: ogImages,
     },
-    // Twitter uses twitter:image, which overrides og:image. We always want
-    // Twitter to see the default wide card, regardless of which platform
-    // is reading the page (Twitter's crawler is Twitterbot, not LinkedInBot,
-    // so it will already see the default — but being explicit doesn't hurt).
     twitter: {
       card: "summary_large_image",
       title: TITLE_SHORT,
@@ -168,6 +144,21 @@ export async function generateMetadata(): Promise<Metadata> {
    component body run in separate contexts). The square image is used for
    Google rich results (Googlebot), so for LinkedIn we use the LinkedIn
    image instead.
+
+   2026 schema upgrade — the @graph now contains:
+     1. WebSite      — the site itself (publisher-linked, no fake SearchAction)
+     2. Organization — the publisher, NOW with sameAs (GitHub repo + profile)
+                       so LLMs can resolve "Quizlet Gravity" as a real entity
+     3. Person       — the author (E-E-A-T signal for Google + AI engines)
+     4. VideoGame    — the game entity, now with playMode, numberOfPlayers,
+                       featureList, inLanguage, isAccessibleForFree,
+                       datePublished/dateModified, keywords, sameAs
+     5. WebPage      — the homepage as a distinct node (isPartOf #website),
+                       with dates and primaryImageOfPage
+
+   All nodes are interlinked via @id, which is how search engines and LLM
+   knowledge graphs stitch the entities together. FAQPage and HowTo live
+   in page.tsx next to the visible FAQ / How-to-play sections.
 ---------------------------------------------------------------------------- */
 export default async function RootLayout({
   children,
@@ -188,13 +179,15 @@ export default async function RootLayout({
         "@id": `${siteUrl}/#website`,
         url: siteUrl,
         name: "Quizlet Gravity",
+        alternateName: "Quizlet Gravity Mode",
         description: DESC_LONG,
+        inLanguage: "en",
+        isAccessibleForFree: true,
         publisher: { "@id": `${siteUrl}/#organization` },
-        potentialAction: {
-          "@type": "SearchAction",
-          target: `${siteUrl}/?q={search_term_string}`,
-          "query-input": "required name=search_term_string",
-        },
+        // NOTE: the previous SearchAction was removed — the site has no
+        // actual search results page, and pointing potentialAction at a
+        // non-existent search violates Google's structured data guidelines
+        // (markup must reflect real functionality).
       },
       {
         "@type": "Organization",
@@ -207,6 +200,21 @@ export default async function RootLayout({
           width: 256,
           height: 256,
         },
+        // sameAs is THE key field for LLM entity resolution — it connects
+        // this organization to its canonical profiles elsewhere on the web.
+        sameAs: [
+          "https://github.com/markosaraf",
+          "https://github.com/markosaraf/quizletgravityLAUNCH",
+        ],
+        founder: { "@id": `${siteUrl}/#author` },
+      },
+      {
+        "@type": "Person",
+        "@id": `${siteUrl}/#author`,
+        name: "Marko Sarafijanovic",
+        alternateName: "markosaraf",
+        url: "https://github.com/markosaraf",
+        sameAs: ["https://github.com/markosaraf"],
       },
       {
         "@type": "VideoGame",
@@ -218,21 +226,46 @@ export default async function RootLayout({
         genre: ["Educational", "Typing", "Arcade"],
         gamePlatform: ["Web Browser", "Personal Computer", "Mobile Phone"],
         operatingSystem: "Any (web browser)",
+        playMode: "SinglePlayer",
+        numberOfPlayers: 1,
+        inLanguage: "en",
+        isAccessibleForFree: true,
         image: `${siteUrl}${squareOrLinkedIn}`,
         thumbnailUrl: `${siteUrl}${squareOrLinkedIn}`,
         screenshot: `${siteUrl}${OG_IMAGE_DEFAULT}`,
+        datePublished: DATE_PUBLISHED,
+        dateModified: DATE_MODIFIED,
+        keywords:
+          "Quizlet, Gravity, study mode, flashcards, study game, typing game, education game, vocabulary game",
+        featureList: GAME_FEATURES,
         publisher: { "@id": `${siteUrl}/#organization` },
-        author: {
-          "@type": "Person",
-          name: "markosaraf",
-          url: "https://github.com/markosaraf",
-        },
+        author: { "@id": `${siteUrl}/#author` },
         offers: {
           "@type": "Offer",
           price: "0",
           priceCurrency: "USD",
           availability: "https://schema.org/InStock",
         },
+        // Link the game entity to its open-source repo — strong signal for
+        // LLMs citing/verifying the project.
+        sameAs: ["https://github.com/markosaraf/quizletgravityLAUNCH"],
+      },
+      {
+        "@type": "WebPage",
+        "@id": `${siteUrl}/#webpage`,
+        url: `${siteUrl}/`,
+        name: TITLE_LONG,
+        description: DESC_LONG,
+        isPartOf: { "@id": `${siteUrl}/#website` },
+        about: { "@id": `${siteUrl}/#game` },
+        primaryImageOfPage: {
+          "@type": "ImageObject",
+          url: `${siteUrl}${OG_IMAGE_DEFAULT}`,
+        },
+        inLanguage: "en",
+        isAccessibleForFree: true,
+        datePublished: DATE_PUBLISHED,
+        dateModified: DATE_MODIFIED,
       },
     ],
   };
@@ -240,7 +273,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        {/* JSON-LD structured data for Google rich results. */}
+        {/* JSON-LD structured data for Google rich results + LLM grounding. */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
