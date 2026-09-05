@@ -7,7 +7,7 @@ Quizlet Gravity is a free, single-player educational typing game. Players import
 ## Key facts
 
 - Name: Quizlet Gravity
-- URL: https://quizletgravity.com
+- URL: https://www.quizletgravity.com
 - Price: Free (no account, no ads, no in-app purchases)
 - Platforms: Any web browser — desktop and mobile
 - Genre: Educational / typing / arcade study game
@@ -38,6 +38,6 @@ Quizlet Gravity is a free, single-player educational typing game. Players import
 
 ## Links
 
-- Play: https://quizletgravity.com
+- Play: https://www.quizletgravity.com
 - Source: https://github.com/markosaraf/quizletgravityLAUNCH
 - Author: https://github.com/markosaraf
