@@ -1,14 +1,57 @@
+# quizletgravity.com robots.txt
+# Default policy: everything is allowed to everyone.
+
+# ---- Standard search engine crawlers ----
 User-agent: Googlebot
 Allow: /
 
 User-agent: Bingbot
 Allow: /
 
+# ---- Social media crawlers (link previews) ----
 User-agent: Twitterbot
 Allow: /
 
 User-agent: facebookexternalhit
 Allow: /
 
+# ---- AI crawlers & answer engines ----
+# These train/fetch content for ChatGPT, Claude, Perplexity, Gemini and
+# friends. They are allowed EXPLICITLY (in addition to the catch-all below)
+# so that the intent is unambiguous and survives any future policy change.
+User-agent: GPTBot            # OpenAI (model training)
+Allow: /
+
+User-agent: OAI-SearchBot     # OpenAI (search / citations in ChatGPT)
+Allow: /
+
+User-agent: ChatGPT-User      # OpenAI (user-initiated browsing)
+Allow: /
+
+User-agent: ClaudeBot         # Anthropic (model training)
+Allow: /
+
+User-agent: Claude-Web        # Anthropic (user-initiated browsing)
+Allow: /
+
+User-agent: PerplexityBot     # Perplexity (answer engine citations)
+Allow: /
+
+User-agent: Google-Extended   # Google (Gemini / AI Overviews grounding)
+Allow: /
+
+User-agent: Applebot-Extended # Apple (Apple Intelligence grounding)
+Allow: /
+
+User-agent: Amazonbot         # Amazon (Alexa / Rufus)
+Allow: /
+
+User-agent: meta-externalagent # Meta (Meta AI)
+Allow: /
+
+# ---- Catch-all ----
 User-agent: *
 Allow: /
+
+# ---- Sitemap ----
+Sitemap: https://quizletgravity.com/sitemap.xml
