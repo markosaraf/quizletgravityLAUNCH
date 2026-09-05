@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import { GAME_FEATURES } from "./seo-content";
 
 /* ----------------------------------------------------------------------------
@@ -281,6 +282,7 @@ export default async function RootLayout({
         {children}
         <Toaster />
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
