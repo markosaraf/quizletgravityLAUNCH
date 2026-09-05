@@ -54,4 +54,12 @@ User-agent: *
 Allow: /
 
 # ---- Sitemap ----
+# NOTE: uses the PRIMARY host (www) — quizletgravity.com 308-redirects to
+# www, so sitemap references must point at the final URL.
 Sitemap: https://www.quizletgravity.com/sitemap.xml
+
+# ---- IndexNow ----
+# Belt-and-braces: the key is also declared here (the real mechanism is the
+# key file at https://www.quizletgravity.com/27d1a1f6394a898f94fcd03d71f91f5e.txt,
+# which the IndexNow library points engines at via keyLocation).
+IndexNow: 27d1a1f6394a898f94fcd03d71f91f5e
