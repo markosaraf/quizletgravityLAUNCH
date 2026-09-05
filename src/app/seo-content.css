@@ -1,0 +1,161 @@
+/* ----------------------------------------------------------------------------
+   Styling for the server-rendered SEO sections (How to play + FAQ).
+
+   Matches the game's own conventions in gravity.css:
+   - dark theme is the default (uses the same --gray-900 / --gray-400 vars)
+   - light theme is triggered by <html data-theme="light">
+   - gold (#d4af37) is the accent, same as the import screen buttons
+---------------------------------------------------------------------------- */
+
+.GravitySEO {
+  background: var(--gray-900, #2e384f);
+  color: #fff;
+  padding: 4rem 1.5rem;
+}
+
+.GravitySEO-inner {
+  margin: 0 auto;
+  max-width: 46rem;
+  width: 100%;
+}
+
+.GravitySEO-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.GravitySEO-subtitle {
+  color: var(--gray-400, #a4aebc);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0 auto 2rem;
+  max-width: 34rem;
+  text-align: center;
+}
+
+/* --- how-to-play steps --- */
+
+.GravitySEO-steps {
+  counter-reset: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.GravitySEO-step {
+  align-items: flex-start;
+  background: rgba(41, 50, 70, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: flex;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+}
+
+.GravitySEO-stepNumber {
+  align-items: center;
+  background: var(--light-gold, #d4af37);
+  border-radius: 9999px;
+  color: #000;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  height: 1.75rem;
+  justify-content: center;
+  width: 1.75rem;
+}
+
+.GravitySEO-stepText {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  padding-top: 0.125rem;
+}
+
+/* --- FAQ accordion --- */
+
+.GravitySEO-faqList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.GravitySEO-faqItem {
+  background: rgba(41, 50, 70, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.GravitySEO-faqQuestion {
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  list-style: none;
+  padding: 1rem 1.25rem;
+}
+
+.GravitySEO-faqQuestion::-webkit-details-marker {
+  display: none;
+}
+
+.GravitySEO-faqQuestion::before {
+  border-left: 0.4rem solid var(--light-gold, #d4af37);
+  border-right: 0.4rem solid transparent;
+  border-top: 0.4rem solid transparent;
+  content: "";
+  display: inline-block;
+  height: 0;
+  margin-right: 0.625rem;
+  transition: transform 0.15s ease;
+  width: 0;
+}
+
+.GravitySEO-faqItem[open] .GravitySEO-faqQuestion::before {
+  transform: rotate(90deg);
+}
+
+.GravitySEO-faqItem[open] .GravitySEO-faqQuestion {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.GravitySEO-faqAnswer {
+  color: var(--gray-400, #a4aebc);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  padding: 1rem 1.25rem;
+}
+
+/* --- light theme overrides (matches gravity.css conventions) --- */
+
+[data-theme="light"] .GravitySEO {
+  background: #fff;
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .GravitySEO-subtitle {
+  color: #5b6472;
+}
+
+[data-theme="light"] .GravitySEO-step,
+[data-theme="light"] .GravitySEO-faqItem {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .GravitySEO-stepText {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .GravitySEO-faqAnswer {
+  color: #5b6472;
+}
+
+[data-theme="light"] .GravitySEO-faqItem[open] .GravitySEO-faqQuestion {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
