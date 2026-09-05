@@ -1,0 +1,43 @@
+# Quizlet Gravity
+
+> A free browser-based study game that recreates Quizlet's Gravity study mode (2020–2024 era). Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV — no account needed.
+
+Quizlet Gravity is a free, single-player educational typing game. Players import their own term/definition pairs (paste or CSV), then answer prompts to destroy asteroids before they hit the planet. It is fully client-side: no account, no backend, no data upload. It recreates the look and mechanics of Quizlet's retired Gravity mode, including difficulty scaling, streak-based scoring, copy-the-answer on misses, and a session leaderboard.
+
+## Key facts
+
+- Name: Quizlet Gravity
+- URL: https://quizletgravity.com
+- Price: Free (no account, no ads, no in-app purchases)
+- Platforms: Any web browser — desktop and mobile
+- Genre: Educational / typing / arcade study game
+- Difficulty levels: Sloth, Easy, Medium, Hard, Mad Max
+- Scoring: 20 × consecutive-correct streak + 150 × (1 + level bonus); wrong answers −10 points
+- Terms per level: 7; gravity starts at 9.8 (Hard: 11, Mad Max: 12.2) and rises 0.2 per level
+- Privacy: fully client-side; term sets stored only in the browser's localStorage
+- Author: Marko Sarafijanovic (markosaraf)
+- Source code: https://github.com/markosaraf/quizletgravityLAUNCH
+- License: MIT
+
+## How to play
+
+1. Paste terms and definitions (one per line, separated by comma, semicolon, dash, or tab) or upload a CSV.
+2. Fix any mis-parsed rows in the editable terms table; star terms to study only those.
+3. Click "Start studying", pick a difficulty and the answer side, then "Start".
+4. Type each answer to destroy the asteroid before it lands.
+5. On a miss, type the correct answer in the copy-the-answer modal to continue; miss the same term twice and the game ends.
+6. Press ESC to skip a term you don't know.
+
+## FAQ
+
+- **Do I need a Quizlet account?** No — the game runs entirely in the browser with no sign-up.
+- **How do I import terms?** Paste one term/definition pair per line (comma, semicolon, dash, or tab separator) or upload a CSV. At least 2 pairs are required.
+- **What happens on a miss?** A copy-the-answer modal appears; type the correct answer to keep playing. Missing the same term twice ends the game.
+- **Does it work on mobile?** Yes, the layout is fully responsive, with a dark/light mode toggle.
+- **Is my data private?** Yes — there is no backend; everything stays in your browser's localStorage.
+
+## Links
+
+- Play: https://quizletgravity.com
+- Source: https://github.com/markosaraf/quizletgravityLAUNCH
+- Author: https://github.com/markosaraf
