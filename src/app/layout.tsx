@@ -272,7 +272,22 @@ export default async function RootLayout({
   };
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        {/* Pre-paint theme script — LIGHT is the site-wide default.
+            The server renders <html data-theme="light"> so new visitors get
+            light mode from the very first paint. This script runs before the
+            body is parsed and ONLY overrides it to dark for returning visitors
+            who explicitly saved 'dark' in localStorage — so dark-mode users
+            never see a light flash (FOUC).
+            NOTE: the key 'gravityTheme' must stay in sync with
+            THEME_STORAGE_KEY in src/lib/gravity/parse.ts. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('gravityTheme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="antialiased">
         {/* JSON-LD structured data for Google rich results + LLM grounding. */}
         <script
