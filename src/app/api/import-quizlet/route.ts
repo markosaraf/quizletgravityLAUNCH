@@ -9,9 +9,9 @@
       open proxy for arbitrary sites).
    2. Fetches the page HTML server-side (browsers can't: Quizlet sends no
       CORS headers) via a fallback chain inside a wall-clock budget:
-      z-ai page reader (optional SDK) → direct fetch → web.archive.org
-      latest snapshot → web.archive.org Save-Page-Now → allorigins / jina /
-      codetabs relays (see src/lib/gravity/quizlet.ts).
+      z.ai web reader (optional, ZAI_API_KEY) → direct fetch →
+      web.archive.org latest snapshot → web.archive.org Save-Page-Now →
+      allorigins / jina / codetabs relays (see src/lib/gravity/quizlet.ts).
    3. Parses the embedded __NEXT_DATA__ payload into ordered
       term/definition pairs.
 
@@ -19,9 +19,8 @@
    Errors:   400 bad/missing url · 502 fetch/parse failure (message is meant
              to be shown to the user verbatim in the import panel).
 
-   Runs on the Node.js runtime (the optional page_reader strategy may use
-   node:fs / node:os to bootstrap credentials) with the maximum serverless
-   duration — the fetch chain's own deadline (55s) fires first.
+   Runs on the Node.js runtime with the maximum serverless duration — the
+   fetch chain's own deadline (55s) fires first.
 ---------------------------------------------------------------------------- */
 
 import { NextRequest, NextResponse } from "next/server";
