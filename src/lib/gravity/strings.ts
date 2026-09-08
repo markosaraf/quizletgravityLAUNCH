@@ -119,6 +119,7 @@ export const STRINGS = {
       fetching: 'Importing…',
       hint: 'Paste the link of a public Quizlet set — the terms and definitions are fetched and filled into the table below, where you can edit them.',
       success: 'Imported {count} terms from “{title}”.',
+      via_note: ' Fetched via {via}.',
       skipped_note: ' {count} card(s) skipped (no text on the definition side).',
       error_no_url: 'Paste a Quizlet set link first.',
     },
