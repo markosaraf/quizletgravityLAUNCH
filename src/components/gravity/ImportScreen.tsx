@@ -110,11 +110,17 @@ export function ImportScreen({ onStart }: Props) {
         typeof data?.skipped === 'number' && data.skipped > 0
           ? format(STRINGS.import.quizlet.skipped_note, { count: data.skipped })
           : '';
+      const viaNote =
+        typeof data?.via === 'string' && data.via
+          ? format(STRINGS.import.quizlet.via_note, { via: data.via })
+          : '';
       setQuizletStatus(
         format(STRINGS.import.quizlet.success, {
           count: cards.length,
           title: typeof data?.title === 'string' ? data.title : 'Quizlet set',
-        }) + skippedNote,
+        }) +
+          skippedNote +
+          viaNote,
       );
       setQuizletOpen(false);
     } catch (err) {
