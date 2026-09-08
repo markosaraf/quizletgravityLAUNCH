@@ -236,7 +236,8 @@ export function loadStoredSeparator(): Separator {
 }
 
 /** Persist + load the user's theme choice (dark / light) across sessions.
-    Defaults to 'dark' — the existing app appearance is the dark mode. */
+    Defaults to 'light' — new visitors get light mode; dark is opt-in.
+    (Keep in sync with the pre-paint theme script in src/app/layout.tsx.) */
 export type Theme = 'dark' | 'light';
 export const THEME_STORAGE_KEY = 'gravityTheme';
 
@@ -249,7 +250,7 @@ export function saveStoredTheme(theme: Theme) {
 }
 
 export function loadStoredTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark';
+  if (typeof window === 'undefined') return 'light';
   const v = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return v === 'dark' || v === 'light' ? v : 'dark';
+  return v === 'dark' || v === 'light' ? v : 'light';
 }
