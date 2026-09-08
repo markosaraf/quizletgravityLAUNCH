@@ -23,7 +23,7 @@ interface Props {
 const SAMPLE = 'helio-, sun\ngeo-, earth\nbio-, life\nchrom-, color';
 
 const SEPARATOR_ORDER: Separator[] = ['comma', 'semicolon', 'dash'];
-const THEME_ORDER: Theme[] = ['dark', 'light'];
+const THEME_ORDER: Theme[] = ['light', 'dark'];
 
 export function ImportScreen({ onStart }: Props) {
   const [tab, setTab] = useState<'paste' | 'file'>('paste');
@@ -42,9 +42,10 @@ export function ImportScreen({ onStart }: Props) {
   }, []);
 
   // User-selected theme (dark / light). Persisted to localStorage. Defaults
-  // to 'dark' (the existing app appearance). Applied to <html data-theme>
-  // post-hydration to avoid SSR mismatch.
-  const [theme, setTheme] = useState<Theme>('dark');
+  // to 'light' (the site-wide default — see also the pre-paint theme script
+  // in src/app/layout.tsx). Applied to <html data-theme> post-hydration to
+  // avoid SSR mismatch.
+  const [theme, setTheme] = useState<Theme>('light');
   useEffect(() => {
     const t = setTimeout(() => {
       const stored = loadStoredTheme();
