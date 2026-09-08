@@ -111,6 +111,17 @@ export const STRINGS = {
       semicolon: 'Semicolon  ;',
       dash: 'Dash  -',
     },
+    quizlet: {
+      button: 'Import Quizlet Set',
+      url_label: 'Quizlet set link',
+      url_placeholder: 'https://quizlet.com/…/flash-cards/',
+      fetch_button: 'Import',
+      fetching: 'Importing…',
+      hint: 'Paste the link of a public Quizlet set — the terms and definitions are fetched and filled into the table below, where you can edit them.',
+      success: 'Imported {count} terms from “{title}”.',
+      skipped_note: ' {count} card(s) skipped (no text on the definition side).',
+      error_no_url: 'Paste a Quizlet set link first.',
+    },
     theme_selector: {
       label: 'Theme',
       dark: 'Dark',
