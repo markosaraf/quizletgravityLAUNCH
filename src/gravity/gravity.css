@@ -2334,3 +2334,211 @@
   color: #000;
   padding: 0.15rem 0.4rem;
 }
+/* =====================================================================
+   Quizlet import — "Import Quizlet Set" button + URL panel
+   Added for the /api/import-quizlet feature. The button sits LEFT of the
+   Paste terms / Upload CSV tabs (inside .GravityImportTopbar); the panel
+   holds a URL input, an Import button, and status/error lines. On success
+   the fetched terms fill the SAME preview table used by paste/CSV.
+
+   Dark mode: mirrors .GravityImportTab / .GravityImportTextarea styling
+   (gray-800 fill, white-alpha borders, twilight accent).
+   Light mode: mirrors the tab overrides (blue text, gold selected fill).
+   ===================================================================== */
+.GravityImportTopbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+/* The tabs carry their own bottom margin — neutralize it inside the row. */
+.GravityImportTopbar .GravityImportTabs {
+  margin-bottom: 0;
+}
+
+.GravityImportQuizlet-button {
+  background: var(--gray-800);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  color: var(--gray-300);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.GravityImportQuizlet-button:hover {
+  background: var(--gray-700);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.GravityImportQuizlet-button.is-open {
+  background: var(--twilight-500);
+  border-color: var(--twilight-500);
+  color: #fff;
+}
+
+.GravityImportQuizlet {
+  background: rgba(41, 50, 70, 0.55);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+}
+
+.GravityImportQuizlet-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.GravityImportQuizlet-label {
+  color: var(--gray-400);
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.GravityImportQuizlet-input {
+  background: var(--gray-800);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  color: #fff;
+  flex: 1 1 16rem;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+}
+
+.GravityImportQuizlet-input:focus {
+  border-color: var(--twilight-400);
+  outline: none;
+}
+
+.GravityImportQuizlet-input:disabled {
+  opacity: 0.6;
+}
+
+.GravityImportQuizlet-fetch {
+  background: var(--twilight-500);
+  border: 1px solid var(--twilight-500);
+  border-radius: 3px;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.GravityImportQuizlet-fetch:hover:not(:disabled) {
+  background: var(--twilight-400);
+  border-color: var(--twilight-400);
+}
+
+.GravityImportQuizlet-fetch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.GravityImportQuizlet-hint {
+  color: var(--gray-400);
+  font-size: 0.8125rem;
+  margin: 0.6rem 0 0;
+}
+
+.GravityImportQuizlet-status {
+  background: rgba(46, 160, 67, 0.15);
+  border: 1px solid rgba(46, 160, 67, 0.5);
+  border-radius: 4px;
+  color: #7ee787;
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.GravityImportQuizlet-error {
+  background: rgba(218, 54, 51, 0.15);
+  border: 1px solid rgba(218, 54, 51, 0.5);
+  border-radius: 4px;
+  color: #ff9d9b;
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+/* --- Light-mode overrides: blue text on transparent, gold selected fill
+       (same pattern as the tabs / separator / theme toggles). --- */
+[data-theme="light"] .GravityImportQuizlet-button {
+  background: transparent;
+  border-color: rgba(0, 0, 0, 0.2);
+  color: var(--light-logo-blue);
+}
+
+[data-theme="light"] .GravityImportQuizlet-button:hover {
+  background: rgba(212, 175, 55, 0.18);
+  border-color: var(--light-gold);
+  color: var(--light-logo-blue);
+}
+
+[data-theme="light"] .GravityImportQuizlet-button.is-open {
+  background: var(--light-gold);
+  border-color: var(--light-gold);
+  color: #000;
+}
+
+[data-theme="light"] .GravityImportQuizlet {
+  background: rgba(255, 255, 255, 0.65);
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] .GravityImportQuizlet-label {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .GravityImportQuizlet-input {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.2);
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .GravityImportQuizlet-input:focus {
+  border-color: var(--light-logo-blue);
+}
+
+[data-theme="light"] .GravityImportQuizlet-fetch {
+  background: var(--light-gold);
+  border-color: var(--light-gold);
+  color: #000;
+}
+
+[data-theme="light"] .GravityImportQuizlet-fetch:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+[data-theme="light"] .GravityImportQuizlet-hint {
+  color: #555;
+}
+
+[data-theme="light"] .GravityImportQuizlet-status {
+  background: rgba(46, 160, 67, 0.12);
+  border-color: rgba(46, 160, 67, 0.45);
+  color: #1a7f37;
+}
+
+[data-theme="light"] .GravityImportQuizlet-error {
+  background: rgba(218, 54, 51, 0.1);
+  border-color: rgba(218, 54, 51, 0.45);
+  color: #b62324;
+}
