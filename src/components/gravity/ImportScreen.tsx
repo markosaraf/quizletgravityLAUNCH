@@ -65,6 +65,65 @@ export function ImportScreen({ onStart }: Props) {
     }
   }, []);
 
+  // Quizlet set import — one-click fetch of a public Quizlet set's terms &
+  // definitions through the site's own /api/import-quizlet route (browsers
+  // can't request quizlet.com directly: Quizlet sends no CORS headers, so
+  // the fetch happens server-side). On success the cards are poured into
+  // the textarea as tab-separated lines so they flow through the exact
+  // same parse → preview-table pipeline as pasted terms, fully editable.
+  const [quizletOpen, setQuizletOpen] = useState(false);
+  const [quizletUrl, setQuizletUrl] = useState('');
+  const [quizletBusy, setQuizletBusy] = useState(false);
+  const [quizletStatus, setQuizletStatus] = useState<string | null>(null);
+  const [quizletError, setQuizletError] = useState<string | null>(null);
+
+  const handleQuizletImport = useCallback(async () => {
+    const link = quizletUrl.trim();
+    if (!link) {
+      setQuizletError(STRINGS.import.quizlet.error_no_url);
+      return;
+    }
+    setQuizletBusy(true);
+    setQuizletError(null);
+    setQuizletStatus(null);
+    try {
+      const res = await fetch(`/api/import-quizlet?url=${encodeURIComponent(link)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.error === 'string' ? data.error : STRINGS.import.error_generic,
+        );
+      }
+      const cards = (data?.cards ?? []) as Array<{ term: string; definition: string }>;
+      if (cards.length < 2) throw new Error(STRINGS.import.error_single);
+      // Tab-separated on purpose: the paste parser always tries tab FIRST
+      // (see splitPastedLine), so pairs split correctly no matter which
+      // separator is selected — and commas inside terms/definitions
+      // ("le client, la cliente") stay safe.
+      setText(cards.map((c) => `${c.term}\t${c.definition}`).join('\n'));
+      // Reuse the existing "file name" slot so the Quizlet set title becomes
+      // the study-set title on Start.
+      setFileName(typeof data?.title === 'string' ? data.title : 'Quizlet set');
+      setTab('paste');
+      setError(null);
+      const skippedNote =
+        typeof data?.skipped === 'number' && data.skipped > 0
+          ? format(STRINGS.import.quizlet.skipped_note, { count: data.skipped })
+          : '';
+      setQuizletStatus(
+        format(STRINGS.import.quizlet.success, {
+          count: cards.length,
+          title: typeof data?.title === 'string' ? data.title : 'Quizlet set',
+        }) + skippedNote,
+      );
+      setQuizletOpen(false);
+    } catch (err) {
+      setQuizletError(err instanceof Error ? err.message : STRINGS.import.error_generic);
+    } finally {
+      setQuizletBusy(false);
+    }
+  }, [quizletUrl]);
+
   /**
    * Editable terms table.
    *
@@ -224,28 +283,96 @@ export function ImportScreen({ onStart }: Props) {
               </div>
             </div>
 
-            <div className="GravityImportTabs">
+            {/* Option row — "Import Quizlet Set" button sits LEFT of the
+                existing "Paste terms" / "Upload CSV" tabs. */}
+            <div className="GravityImportTopbar">
               <button
                 type="button"
-                className={`GravityImportTab ${tab === 'paste' ? 'is-active' : ''}`}
+                className={`GravityImportQuizlet-button ${quizletOpen ? 'is-open' : ''}`}
                 onClick={() => {
-                  setTab('paste');
-                  setError(null);
+                  setQuizletOpen((o) => !o);
+                  setQuizletError(null);
                 }}
+                aria-expanded={quizletOpen}
+                aria-controls="quizlet-import-panel"
               >
-                {STRINGS.import.paste_tab}
+                {STRINGS.import.quizlet.button}
               </button>
-              <button
-                type="button"
-                className={`GravityImportTab ${tab === 'file' ? 'is-active' : ''}`}
-                onClick={() => {
-                  setTab('file');
-                  setError(null);
-                }}
-              >
-                {STRINGS.import.file_tab}
-              </button>
+
+              <div className="GravityImportTabs">
+                <button
+                  type="button"
+                  className={`GravityImportTab ${tab === 'paste' ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setTab('paste');
+                    setError(null);
+                  }}
+                >
+                  {STRINGS.import.paste_tab}
+                </button>
+                <button
+                  type="button"
+                  className={`GravityImportTab ${tab === 'file' ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setTab('file');
+                    setError(null);
+                  }}
+                >
+                  {STRINGS.import.file_tab}
+                </button>
+              </div>
             </div>
+
+            {/* Quizlet import panel — URL input + fetch; terms land in the
+                same preview table used by paste/CSV. */}
+            {quizletOpen ? (
+              <div className="GravityImportQuizlet" id="quizlet-import-panel">
+                <div className="GravityImportQuizlet-row">
+                  <label className="GravityImportQuizlet-label" htmlFor="quizlet-url-input">
+                    {STRINGS.import.quizlet.url_label}
+                  </label>
+                  <input
+                    id="quizlet-url-input"
+                    type="url"
+                    className="GravityImportQuizlet-input"
+                    value={quizletUrl}
+                    placeholder={STRINGS.import.quizlet.url_placeholder}
+                    onChange={(e) => {
+                      setQuizletUrl(e.target.value);
+                      setQuizletError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleQuizletImport();
+                      }
+                    }}
+                    disabled={quizletBusy}
+                  />
+                  <button
+                    type="button"
+                    className="GravityImportQuizlet-fetch"
+                    onClick={() => void handleQuizletImport()}
+                    disabled={quizletBusy || quizletUrl.trim() === ''}
+                  >
+                    {quizletBusy
+                      ? STRINGS.import.quizlet.fetching
+                      : STRINGS.import.quizlet.fetch_button}
+                  </button>
+                </div>
+                <p className="GravityImportQuizlet-hint">{STRINGS.import.quizlet.hint}</p>
+                {quizletStatus ? (
+                  <div className="GravityImportQuizlet-status" role="status">
+                    {quizletStatus}
+                  </div>
+                ) : null}
+                {quizletError ? (
+                  <div className="GravityImportQuizlet-error" role="alert">
+                    {quizletError}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="GravityImportSeparator" role="group" aria-label={STRINGS.import.separator_selector.title}>
               <span className="GravityImportSeparator-label">
