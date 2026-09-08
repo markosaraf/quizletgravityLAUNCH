@@ -21,15 +21,17 @@
  * strategies. The chain runs in order and the first response whose body
  * contains __NEXT_DATA__ wins:
  *
- *   1. z-ai page reader  — the Z.ai "page_reader" function from the
- *                          z-ai-web-dev-sdk package. OPTIONAL: it activates
- *                          only when the package is installed AND credentials
- *                          exist (.z-ai-config in cwd/home//etc, or the
- *                          ZAI_BASE_URL + ZAI_API_KEY env vars). When it is
- *                          not configured it is skipped at zero cost. The
- *                          page_reader service fetches from different
- *                          infrastructure and gets through Quizlet's bot
- *                          wall reliably.
+ *   1. z.ai web reader   — the OFFICIAL public Web Reader REST API
+ *                          (POST https://api.z.ai/api/paas/v4/reader —
+ *                          docs.z.ai/api-reference/tools/web-reader).
+ *                          OPTIONAL: activates only when ZAI_API_KEY is set;
+ *                          ZAI_BASE_URL overrides the default
+ *                          https://api.z.ai/api/paas/v4 base. NO SDK package
+ *                          is needed — it is a plain fetch with Bearer auth.
+ *                          Z.ai fetches the page from its own infrastructure
+ *                          and gets through Quizlet's bot wall reliably
+ *                          (typically in ~1–3 s), and `return_format: html`
+ *                          returns the raw page so __NEXT_DATA__ survives.
  *   2. direct fetch      — full browser-like headers; works from some hosts.
  *   3. web.archive.org   — latest Wayback snapshot of the set page. The `id_`
  *                          playback modifier serves the ORIGINAL page bytes
@@ -70,7 +72,7 @@ export interface QuizletImportResult {
 
 /** Options for fetchQuizletHtml — exposed for unit tests. */
 export interface QuizletFetchOptions {
-  /** Use the optional z-ai page_reader strategy (default: true). */
+  /** Use the optional z.ai web reader strategy (default: true). */
   pageReader?: boolean;
   /** web.archive.org origin (overridable in tests to point at a mock). */
   waybackBase?: string;
@@ -128,7 +130,7 @@ const BROWSER_HEADERS: Record<string, string> = {
 // Per-strategy hard caps (ms). Strategies also honor the global deadline —
 // a strategy is skipped entirely when less than MIN_STRATEGY_BUDGET of the
 // budget remains, so the route can always return a proper JSON error.
-const PAGE_READER_TIMEOUT_MS = 25_000;
+const ZAI_READER_TIMEOUT_MS = 30_000;
 const DIRECT_TIMEOUT_MS = 6_000;
 const WAYBACK_LATEST_TIMEOUT_MS = 20_000;
 const SAVE_PAGE_NOW_TIMEOUT_MS = 40_000;
@@ -166,90 +168,94 @@ async function fetchText(url: string, timeoutMs: number, headers: Record<string,
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Strategy 1 — z-ai page reader (optional)
+   Strategy 1 — z.ai web reader (official public REST API, optional)
    ──────────────────────────────────────────────────────────────────────── */
 
-interface ZaiPageReaderResult {
-  data?: { html?: string };
+/**
+ * Build the Web Reader endpoint from a configured base URL. Accepted shapes
+ * (trailing slashes tolerated):
+ *   https://api.z.ai               → https://api.z.ai/api/paas/v4/reader
+ *   https://api.z.ai/api           → https://api.z.ai/api/paas/v4/reader
+ *   https://api.z.ai/api/paas/v4   → https://api.z.ai/api/paas/v4/reader
+ *   …anything ending in /reader    → kept as-is (already the full endpoint)
+ * Exported for unit tests.
+ */
+export function zaiReaderEndpoint(baseUrl: string): string {
+  let b = baseUrl.replace(/\/+$/, '');
+  if (/\/reader$/i.test(b)) return b;
+  // Tolerate the documented server root (…/api) as well as the
+  // OpenAI-style base (…/api/paas/v4) — both must land on the same endpoint.
+  b = b.replace(/\/api$/i, '');
+  if (/\/paas\/v4$/i.test(b)) return `${b}/reader`;
+  return `${b}/api/paas/v4/reader`;
 }
 
-interface ZaiClient {
-  functions: { invoke: (name: string, args: unknown) => Promise<unknown> };
+interface ZaiReaderResponse {
+  reader_result?: { content?: string; title?: string; url?: string };
+  error?: { code?: number | string; message?: string };
+  code?: number | string;
+  msg?: string;
 }
 
 /**
- * Load the optional z-ai-web-dev-sdk and return a page_reader invoker.
+ * Fetch `url` through Z.ai's documented Web Reader endpoint
+ * (POST {base}/reader — https://docs.z.ai/api-reference/tools/web-reader).
  *
- * The specifier is hidden from both TypeScript and the bundler by going
- * through `new Function('return import(m)')`: the project therefore builds
- * even when the package is NOT installed, and at runtime a missing package
- * simply throws and we return null (strategy skipped). Bare specifiers in
- * this construct resolve from the process working directory, which on
- * serverless hosts is the project root — exactly where node_modules lives.
+ * Credentials come from the environment — NO SDK package required:
+ *   ZAI_API_KEY   (required)  key from https://z.ai/manage-apikey/apikey-list
+ *   ZAI_BASE_URL  (optional)  default https://api.z.ai/api/paas/v4
  *
- * Credentials are read from .z-ai-config by the SDK itself (cwd / home /
- * /etc). As a convenience for hosts where committing that file is
- * impractical (Vercel), ZAI_BASE_URL + ZAI_API_KEY env vars are written
- * into a config file in the home directory once, before retrying.
+ * `return_format: 'html'` asks the reader for the raw page HTML so the
+ * __NEXT_DATA__ payload survives. If the service replies without usable
+ * content (plan gating, unsupported format, upstream block) we fail fast —
+ * surfacing Z.ai's error code — and the chain moves on to the
+ * credential-free strategies below.
+ *
+ * Note: this API has been observed to answer HTTP 200 with an error JSON
+ * body, so success is validated from the BODY, not the status code.
  */
-async function loadPageReader(): Promise<ZaiClient['functions']['invoke'] | null> {
-  try {
-    const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Promise<{
-      default: { create: () => Promise<ZaiClient> };
-    }>;
-    let mod: { default: { create: () => Promise<ZaiClient> } };
-    try {
-      mod = await dynamicImport('z-ai-web-dev-sdk');
-    } catch {
-      // Package not installed — page reader strategy unavailable.
-      return null;
-    }
-    try {
-      const zai = await mod.default.create();
-      return zai.functions.invoke;
-    } catch {
-      // No .z-ai-config found — retry once with env-provided credentials.
-      if (process.env.ZAI_BASE_URL && process.env.ZAI_API_KEY) {
-        try {
-          const fs = await import('node:fs/promises');
-          const os = await import('node:os');
-          const path = await import('node:path');
-          const cfg: Record<string, string> = {
-            baseUrl: process.env.ZAI_BASE_URL,
-            apiKey: process.env.ZAI_API_KEY,
-          };
-          if (process.env.ZAI_CHAT_ID) cfg.chatId = process.env.ZAI_CHAT_ID;
-          if (process.env.ZAI_USER_ID) cfg.userId = process.env.ZAI_USER_ID;
-          if (process.env.ZAI_TOKEN) cfg.token = process.env.ZAI_TOKEN;
-          await fs.writeFile(path.join(os.homedir(), '.z-ai-config'), JSON.stringify(cfg), 'utf8');
-          const zai = await mod.default.create();
-          return zai.functions.invoke;
-        } catch {
-          return null;
-        }
-      }
-      return null;
-    }
-  } catch {
-    return null;
-  }
-}
+async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOutcome> {
+  const apiKey = process.env.ZAI_API_KEY;
+  if (!apiKey) return { ok: false, error: 'ZAI_API_KEY not set' };
+  const endpoint = zaiReaderEndpoint(process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4');
 
-async function fetchViaPageReader(url: string, budgetMs: number): Promise<FetchOutcome> {
-  const invoke = await loadPageReader();
-  if (!invoke) return { ok: false, error: 'page reader not configured' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), budgetMs);
   try {
-    const result = (await Promise.race([
-      invoke('page_reader', { url }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), budgetMs),
-      ),
-    ])) as ZaiPageReaderResult;
-    const html = result?.data?.html ?? '';
-    if (!html) return { ok: false, error: 'page reader returned no content' };
-    return { ok: true, body: html };
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        url,
+        return_format: 'html', // raw page HTML — keeps the __NEXT_DATA__ blob intact
+        timeout: 25, // reader-side fetch timeout, in seconds
+      }),
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 200);
+      return { ok: false, error: `HTTP ${res.status}${detail ? ` — ${detail}` : ''}` };
+    }
+    const json = (await res.json().catch(() => null)) as ZaiReaderResponse | null;
+    if (!json) return { ok: false, error: 'unreadable response body' };
+    const content = json.reader_result?.content ?? '';
+    if (!content) {
+      const detail =
+        json.error?.message ?? json.msg ?? (json.code !== undefined ? `code ${json.code}` : 'no content');
+      return { ok: false, error: `web reader: ${detail}` };
+    }
+    return { ok: true, body: content };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'page reader failed' };
+    return {
+      ok: false,
+      error: err instanceof Error ? (err.name === 'AbortError' ? 'timeout' : err.message) : 'network error',
+    };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -384,10 +390,10 @@ export async function fetchQuizletHtml(
 
   const strategies: Strategy[] = [
     {
-      name: 'z-ai page reader',
-      via: 'z-ai page reader',
-      cap: PAGE_READER_TIMEOUT_MS,
-      run: (budget) => fetchViaPageReader(canonicalUrl, budget),
+      name: 'z-ai web reader',
+      via: 'z-ai web reader',
+      cap: ZAI_READER_TIMEOUT_MS,
+      run: (budget) => fetchViaZaiReader(canonicalUrl, budget),
     },
     {
       name: 'direct fetch',
@@ -438,7 +444,11 @@ export async function fetchQuizletHtml(
   let lastError = 'unknown error';
 
   for (const strategy of strategies) {
-    if (strategy.name === 'z-ai page reader' && opts.pageReader === false) continue;
+    if (strategy.name === 'z-ai web reader') {
+      // Not requested, or not configured (no key) → zero-cost skip, and the
+      // attempt is not even listed in the error message.
+      if (opts.pageReader === false || !process.env.ZAI_API_KEY) continue;
+    }
 
     const budget = Math.min(strategy.cap, remaining());
     if (budget < MIN_STRATEGY_BUDGET_MS) {
