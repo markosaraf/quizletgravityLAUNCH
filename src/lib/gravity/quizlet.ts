@@ -3,23 +3,32 @@
  * the terms & definitions.
  *
  * ── How the parsing works ────────────────────────────────────────────────
- * Quizlet server-renders every public flashcard page, and the full card data
- * is embedded in the HTML inside a <script id="__NEXT_DATA__"> JSON blob.
- * Each card ("studiable item") looks like:
+ * Two payload shapes are supported, and the fetch chain tags which one it
+ * delivered:
  *
- *   { "rank": 0, "isDeleted": false,
- *     "cardSides": [
- *       { "label": "word",       "media": [{ "type": 1, "plainText": "accueillir" }] },
- *       { "label": "definition", "media": [{ "type": 1, "plainText": "empfangen"  }] } ] }
+ *   format 'html'      — the raw SSR page. Quizlet embeds the full card data
+ *                        in a <script id="__NEXT_DATA__"> JSON blob:
  *
- * The blob is sometimes nested one level deeper (a JSON *string* inside the
- * JSON), so the walker json.parses any string that mentions "cardSides".
+ *                          { "rank": 0, "isDeleted": false,
+ *                            "cardSides": [
+ *                              { "label": "word",       "media": [{ "plainText": "accueillir" }] },
+ *                              { "label": "definition", "media": [{ "plainText": "empfangen"  }] } ] }
+ *
+ *                        The blob is sometimes nested one level deeper (a JSON
+ *                        *string* inside the JSON), so the walker json.parses
+ *                        any string that mentions "cardSides".
+ *
+ *   format 'reader-md' — the z.ai web reader's markdown rendering of the
+ *                        page. Quizlet server-renders a "Terms in this set
+ *                        (N)" section whose entries are blank-line separated
+ *                        and strictly alternate term / definition, so pairs
+ *                        are reconstructed positionally and validated
+ *                        against the announced count N.
  *
  * ── How the page is fetched ──────────────────────────────────────────────
  * Quizlet aggressively blocks datacenter IPs (403 challenges / connection
  * timeouts), so a plain server-side fetch is only the FIRST of several
- * strategies. The chain runs in order and the first response whose body
- * contains __NEXT_DATA__ wins:
+ * strategies. The chain runs in order and the first usable payload wins:
  *
  *   1. z.ai web reader   — the OFFICIAL public Web Reader REST API
  *                          (POST https://api.z.ai/api/paas/v4/reader —
@@ -28,10 +37,20 @@
  *                          ZAI_BASE_URL overrides the default
  *                          https://api.z.ai/api/paas/v4 base. NO SDK package
  *                          is needed — it is a plain fetch with Bearer auth.
- *                          Z.ai fetches the page from its own infrastructure
- *                          and gets through Quizlet's bot wall reliably
- *                          (typically in ~1–3 s), and `return_format: html`
- *                          returns the raw page so __NEXT_DATA__ survives.
+ *                          MARKDOWN-FIRST: `return_format: 'markdown'` is
+ *                          requested because the 'html' format has been
+ *                          observed to answer HTTP 200 with an EMPTY result
+ *                          for Quizlet's heavy pages; the markdown rendering
+ *                          carries the full "Terms in this set (N)" list and
+ *                          is parsed by parseQuizletMarkdown(). If the
+ *                          markdown somehow lacks the terms list, the reader
+ *                          is retried once with return_format 'html' (which
+ *                          yields __NEXT_DATA__ when Z.ai honours it).
+ *                          BILLING CAVEAT: the reader bills the pay-as-you-go
+ *                          API wallet — GLM Coding Plan credits do NOT cover
+ *                          it. On error 1113 ("Insufficient balance or no
+ *                          resource package") the chain simply moves on to
+ *                          the free strategies below.
  *   2. direct fetch      — full browser-like headers; works from some hosts.
  *   3. web.archive.org   — latest Wayback snapshot of the set page. The `id_`
  *                          playback modifier serves the ORIGINAL page bytes
@@ -47,7 +66,9 @@
  *
  * The whole chain runs inside a wall-clock budget (deadline guard) so the
  * API route always answers with a clean JSON error before the hosting
- * platform kills the function.
+ * platform kills the function. Missing configuration (ZAI_API_KEY) is
+ * reported EXPLICITLY in the error message — a silently skipped strategy is
+ * indistinguishable from a mysteriously broken one when debugging a deploy.
  *
  * We only ever request https://quizlet.com/<numeric-id>/ (plus its Wayback
  * copies) so the endpoint can never be abused as a generic proxy.
@@ -70,7 +91,7 @@ export interface QuizletImportResult {
   via?: string;
 }
 
-/** Options for fetchQuizletHtml — exposed for unit tests. */
+/** Options for fetchQuizletPage — exposed for unit tests. */
 export interface QuizletFetchOptions {
   /** Use the optional z.ai web reader strategy (default: true). */
   pageReader?: boolean;
@@ -80,8 +101,13 @@ export interface QuizletFetchOptions {
   deadlineMs?: number;
 }
 
+/** The two payload shapes the chain can deliver. */
+export type QuizletPayloadFormat = 'html' | 'reader-md';
+
 export interface QuizletFetchedPage {
-  html: string;
+  /** Raw page HTML ('html') or the reader's markdown rendering ('reader-md'). */
+  payload: string;
+  format: QuizletPayloadFormat;
   via: string;
 }
 
@@ -144,7 +170,16 @@ const MIN_STRATEGY_BUDGET_MS = 3_000;
 const DEFAULT_DEADLINE_MS = 55_000;
 const DEFAULT_WAYBACK_BASE = 'https://web.archive.org';
 
-type FetchOutcome = { ok: true; body: string } | { ok: false; error: string };
+type FetchOutcome =
+  | { ok: true; body: string; /** Set by the reader strategy for markdown payloads. */ format?: QuizletPayloadFormat }
+  | {
+      ok: false;
+      error: string;
+      /** Z.ai rejected the call with 1113-style "no balance / no resource
+          package" — the key is VALID, the reader just isn't covered by the
+          Coding Plan (it bills the separate pay-as-you-go API wallet). */
+      billingBlocked?: boolean;
+    };
 
 async function fetchText(url: string, timeoutMs: number, headers: Record<string, string> = BROWSER_HEADERS): Promise<FetchOutcome> {
   const controller = new AbortController();
@@ -197,28 +232,32 @@ interface ZaiReaderResponse {
   msg?: string;
 }
 
-/**
- * Fetch `url` through Z.ai's documented Web Reader endpoint
- * (POST {base}/reader — https://docs.z.ai/api-reference/tools/web-reader).
- *
- * Credentials come from the environment — NO SDK package required:
- *   ZAI_API_KEY   (required)  key from https://z.ai/manage-apikey/apikey-list
- *   ZAI_BASE_URL  (optional)  default https://api.z.ai/api/paas/v4
- *
- * `return_format: 'html'` asks the reader for the raw page HTML so the
- * __NEXT_DATA__ payload survives. If the service replies without usable
- * content (plan gating, unsupported format, upstream block) we fail fast —
- * surfacing Z.ai's error code — and the chain moves on to the
- * credential-free strategies below.
- *
- * Note: this API has been observed to answer HTTP 200 with an error JSON
- * body, so success is validated from the BODY, not the status code.
- */
-async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOutcome> {
-  const apiKey = process.env.ZAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'ZAI_API_KEY not set' };
-  const endpoint = zaiReaderEndpoint(process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4');
+/** True for Z.ai error 1113 ("Insufficient balance or no resource package.
+ *  Please recharge.") — the Web Reader is a pay-as-you-go tool billed from
+ *  the API wallet, so GLM Coding Plan credits never cover it. */
+function isZaiBillingError(code: unknown, message: unknown): boolean {
+  const codeStr = String(code ?? '');
+  const msg = String(message ?? '');
+  return codeStr === '1113' || /insufficient balance|resource package|please recharge/i.test(msg);
+}
 
+/**
+ * ONE Web Reader POST with a fixed return_format. Success is validated from
+ * the BODY, not the status code — this API has been observed to answer
+ * HTTP 200 in two degenerate ways:
+ *   a) with an error JSON body (billing/auth errors), and
+ *   b) with NEITHER reader_result NOR an error — an empty task receipt
+ *      (observed for return_format:'html' on Quizlet's heavy pages).
+ * Case (b) is reported as an empty result so the caller can try a
+ * different format instead of giving up.
+ */
+async function zaiReaderCall(
+  endpoint: string,
+  apiKey: string,
+  url: string,
+  returnFormat: 'html' | 'markdown',
+  budgetMs: number,
+): Promise<FetchOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), budgetMs);
   try {
@@ -230,23 +269,46 @@ async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOu
       },
       body: JSON.stringify({
         url,
-        return_format: 'html', // raw page HTML — keeps the __NEXT_DATA__ blob intact
+        return_format: returnFormat,
         timeout: 25, // reader-side fetch timeout, in seconds
       }),
       redirect: 'follow',
       signal: controller.signal,
     });
     if (!res.ok) {
-      const detail = (await res.text()).slice(0, 200);
-      return { ok: false, error: `HTTP ${res.status}${detail ? ` — ${detail}` : ''}` };
+      const raw = await res.text().catch(() => '');
+      let code: unknown;
+      let message: unknown;
+      try {
+        const parsed = JSON.parse(raw) as ZaiReaderResponse;
+        code = parsed.error?.code ?? parsed.code;
+        message = parsed.error?.message ?? parsed.msg;
+      } catch {
+        /* body was not JSON — fall through to the raw text below */
+      }
+      const detail = (typeof message === 'string' && message) || raw.slice(0, 160);
+      return {
+        ok: false,
+        billingBlocked: isZaiBillingError(code, message ?? raw),
+        error: `HTTP ${res.status}${detail ? ` — ${detail}` : ''}`,
+      };
     }
     const json = (await res.json().catch(() => null)) as ZaiReaderResponse | null;
     if (!json) return { ok: false, error: 'unreadable response body' };
     const content = json.reader_result?.content ?? '';
     if (!content) {
-      const detail =
-        json.error?.message ?? json.msg ?? (json.code !== undefined ? `code ${json.code}` : 'no content');
-      return { ok: false, error: `web reader: ${detail}` };
+      const code = json.error?.code ?? json.code;
+      const message = json.error?.message ?? json.msg;
+      // Degenerate empty task receipt (no error keys, no content)?
+      if (code === undefined && !message) {
+        return { ok: false, error: `empty result (format '${returnFormat}' not fulfilled)` };
+      }
+      const detail = message ?? (code !== undefined ? `code ${code}` : 'no content');
+      return {
+        ok: false,
+        billingBlocked: isZaiBillingError(code, message),
+        error: `web reader: ${detail}`,
+      };
     }
     return { ok: true, body: content };
   } catch (err) {
@@ -257,6 +319,59 @@ async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOu
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Fetch `url` through Z.ai's documented Web Reader endpoint
+ * (POST {base}/reader — https://docs.z.ai/api-reference/tools/web-reader).
+ *
+ * Credentials come from the environment — NO SDK package required:
+ *   ZAI_API_KEY   (required)  key from https://z.ai/manage-apikey/apikey-list
+ *   ZAI_BASE_URL  (optional)  default https://api.z.ai/api/paas/v4
+ *
+ * MARKDOWN-FIRST: live probing (2026-09) showed `return_format:'html'`
+ * returns an empty task receipt for Quizlet pages, while 'markdown' returns
+ * the rendered page including the full "Terms in this set (N)" list. So the
+ * markdown format is requested first and validated against that marker;
+ * only when the marker is missing (but the call itself worked) do we retry
+ * once with 'html' in case __NEXT_DATA__ is available.
+ *
+ * Billing rejections (error 1113) abort immediately — a second paid call
+ * would fail identically.
+ */
+async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOutcome> {
+  const apiKey = (process.env.ZAI_API_KEY ?? '').trim();
+  if (!apiKey) return { ok: false, error: 'ZAI_API_KEY not set on the server' };
+  const endpoint = zaiReaderEndpoint((process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4').trim());
+
+  // Markdown gets the lion's share of the budget — it is the proven path.
+  const mdBudget = Math.max(MIN_STRATEGY_BUDGET_MS, Math.floor(budgetMs * 0.65));
+  const md = await zaiReaderCall(endpoint, apiKey, url, 'markdown', mdBudget);
+
+  if (md.ok) {
+    if (md.body.includes('Terms in this set')) {
+      return { ok: true, body: md.body, format: 'reader-md' };
+    }
+    // Markdown worked but carries no terms list (unexpected for a flashcard
+    // set) — one retry with 'html', which carries __NEXT_DATA__ when the
+    // reader honours the format.
+    const htmlBudget = budgetMs - mdBudget;
+    if (htmlBudget >= MIN_STRATEGY_BUDGET_MS) {
+      const html = await zaiReaderCall(endpoint, apiKey, url, 'html', htmlBudget);
+      if (html.ok && html.body.includes('__NEXT_DATA__')) {
+        return { ok: true, body: html.body, format: 'html' };
+      }
+      const htmlErr = html.ok ? 'html had no embedded page data' : html.error;
+      return { ok: false, error: `markdown had no Quizlet terms list; html retry: ${htmlErr}` };
+    }
+    return { ok: false, error: 'markdown had no Quizlet terms list (no budget left for the html retry)' };
+  }
+
+  // Markdown call failed. Billing rejections make a second format pointless.
+  if (md.billingBlocked) return md;
+  // Other failures (network/timeout/server) — the html retry would face the
+  // same infrastructure, so surface the error directly.
+  return md;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -377,9 +492,10 @@ interface Strategy {
   run: (budgetMs: number) => Promise<FetchOutcome>;
 }
 
-/** Fetch the SSR HTML of a Quizlet set page; throws with a user-friendly
-    message when every strategy is blocked or runs out of budget. */
-export async function fetchQuizletHtml(
+/** Fetch a parseable Quizlet set payload (raw HTML or reader markdown);
+    throws with a user-friendly, diagnostic message when every strategy is
+    blocked, misconfigured, or runs out of budget. */
+export async function fetchQuizletPage(
   canonicalUrl: string,
   opts: QuizletFetchOptions = {},
 ): Promise<QuizletFetchedPage> {
@@ -442,12 +558,23 @@ export async function fetchQuizletHtml(
   const attempted: string[] = [];
   const errors: string[] = [];
   let lastError = 'unknown error';
+  // The reader is the one strategy whose failure is usually actionable
+  // (missing key, no balance, wrong base URL) — remember its outcome for the
+  // final diagnosis even when later strategies fail for other reasons.
+  let readerError: string | null = null;
+  // Set when the z.ai reader was rejected for billing reasons (error 1113) —
+  // surfaced as a friendly tip at the end of the error message.
+  let zaiBillingHint: string | null = null;
 
   for (const strategy of strategies) {
     if (strategy.name === 'z-ai web reader') {
-      // Not requested, or not configured (no key) → zero-cost skip, and the
-      // attempt is not even listed in the error message.
-      if (opts.pageReader === false || !process.env.ZAI_API_KEY) continue;
+      if (opts.pageReader === false) continue;
+      if (!(process.env.ZAI_API_KEY ?? '').trim()) {
+        // VISIBLE skip — a missing env var on the hosting platform must
+        // never look like the reader "mysteriously" never ran.
+        attempted.push('z-ai web reader (skipped: ZAI_API_KEY not set on the server)');
+        continue;
+      }
     }
 
     const budget = Math.min(strategy.cap, remaining());
@@ -458,20 +585,34 @@ export async function fetchQuizletHtml(
     attempted.push(strategy.name);
 
     const result = await strategy.run(budget);
-    if (result.ok && result.body.includes('__NEXT_DATA__')) {
-      return { html: result.body, via: strategy.via };
+    const usable =
+      result.ok && (result.format === 'reader-md' || result.body.includes('__NEXT_DATA__'));
+    if (result.ok && usable) {
+      return { payload: result.body, format: result.format ?? 'html', via: strategy.via };
     }
     lastError = result.ok ? 'response did not contain page data' : result.error;
     errors.push(`${strategy.name}: ${lastError}`);
+    if (strategy.name === 'z-ai web reader') {
+      readerError = lastError;
+    }
+    if (!result.ok && result.billingBlocked) {
+      zaiBillingHint =
+        'Tip: your ZAI_API_KEY is valid, but the z.ai Web Reader reports no balance or resource package for it ' +
+        '(error 1113 — GLM Coding Plan credits do not cover the reader; it bills the separate pay-as-you-go API wallet), ' +
+        'so the import used the credential-free fallbacks. ' +
+        'To enable the reader, top up your API wallet or buy a resource package in the z.ai console.';
+    }
 
     // Out of budget — don't start any further strategy.
     if (remaining() < MIN_STRATEGY_BUDGET_MS) break;
   }
 
   const detail = errors.length > 0 ? errors[errors.length - 1] : lastError;
+  const readerDiag = readerError ? ` z-ai web reader: ${readerError}.` : '';
   throw new Error(
-    `Could not load the Quizlet page (tried ${attempted.join(', ')}; last error: ${detail}). ` +
-      'Quizlet may temporarily be blocking automated requests — try again in a moment, or paste the terms manually.',
+    `Could not load the Quizlet page (tried ${attempted.join(', ')}).${readerDiag} Last error: ${detail}. ` +
+      'Quizlet may temporarily be blocking automated requests — try again in a moment, or paste the terms manually.' +
+      (zaiBillingHint ? ` ${zaiBillingHint}` : ''),
   );
 }
 
@@ -543,8 +684,9 @@ function sideText(side: RawCardSide): string {
   return texts.join('\n');
 }
 
-/** Parse the SSR HTML of a Quizlet set page into ordered, deduplicated
-    term/definition pairs. Throws when the payload is missing or empty. */
+/** Parse the raw SSR HTML of a Quizlet set page (payload format 'html') into
+    ordered, deduplicated term/definition pairs. Throws when the payload is
+    missing or empty. */
 export function parseQuizletHtml(html: string, canonicalUrl: string, setId: string): QuizletImportResult {
   const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
   if (!match) {
@@ -592,6 +734,79 @@ export function parseQuizletHtml(html: string, canonicalUrl: string, setId: stri
       seen.add(key);
       cards.push({ term, definition });
     });
+
+  if (cards.length === 0) {
+    throw new Error(
+      'No term/definition pairs were found on that page. Check that the set is public and contains text cards.',
+    );
+  }
+
+  return { title, url: canonicalUrl, setId, cards, skipped };
+}
+
+/** Parse the z.ai web reader's markdown rendering of a Quizlet set page
+    (payload format 'reader-md').
+
+    Quizlet server-renders a "Terms in this set (N)" section whose entries
+    are blank-line separated and strictly alternate term / definition, e.g.:
+
+        Terms in this set (62)
+
+        accueillir
+
+        empfangen
+
+        le client, la cliente
+
+        der Kunde, die Kundin
+
+    The pairs are therefore reconstructed positionally: split the section on
+    blank lines (dropping image-only blocks), pair the blocks (even = term,
+    odd = definition), then dedupe exact duplicates. The announced count N
+    is used to report how many cards could not be recovered as text.
+
+    Validated against the live reader output of set 1181229873: 62 announced
+    → 62 raw pairs → 61 unique (one genuine duplicate in the source set). */
+export function parseQuizletMarkdown(markdown: string, canonicalUrl: string, setId: string): QuizletImportResult {
+  const header = markdown.match(/Terms in this set \((\d+)\)/);
+  if (!header) {
+    throw new Error(
+      "Couldn't find the terms list in the Quizlet page text — the set may be private, empty, or not a flashcard set.",
+    );
+  }
+  const expected = Number(header[1]);
+
+  const start = (header.index ?? 0) + header[0].length;
+  const afterHeader = markdown.slice(start);
+  // The list ends at the next markdown heading ("Students also viewed",
+  // footer sections, …) — everything before it belongs to the cards.
+  const nextHeading = afterHeader.search(/\n#{1,6} /);
+  const section = nextHeading === -1 ? afterHeader : afterHeader.slice(0, nextHeading);
+
+  const blocks = section
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0 && !b.startsWith('![')); // drop image-only blocks
+
+  const titleMatch = markdown.match(/^# (.+)$/m);
+  const title = titleMatch ? unescapeEntities(titleMatch[1].trim()) : 'Quizlet set';
+
+  const cards: QuizletCard[] = [];
+  const seen = new Set<string>();
+  let rawPairs = 0;
+
+  for (let i = 0; i + 1 < blocks.length; i += 2) {
+    const term = unescapeEntities(blocks[i]);
+    const definition = unescapeEntities(blocks[i + 1]);
+    if (!term || !definition) continue;
+    rawPairs += 1;
+    const key = `${term}\u0000${definition}`;
+    if (seen.has(key)) continue; // the source set may contain exact duplicates
+    seen.add(key);
+    cards.push({ term, definition });
+  }
+
+  const skipped = Math.max(0, expected - rawPairs);
 
   if (cards.length === 0) {
     throw new Error(
