@@ -24,6 +24,11 @@
  *                         blank-line separated and strictly alternate term /
  *                         definition, so pairs are reconstructed positionally
  *                         and validated against the announced count N.
+ *                         IMPORTANT: the heading is rendered in the UI locale
+ *                         of the page (quizlet.com/ch/… may serve German
+ *                         "Begriffe in diesem Set (N)" or French "Termes de
+ *                         cet ensemble (N)") — the matcher below is
+ *                         locale-aware.
  *
  *   format 'webapi-json' — Quizlet's own internal JSON API used by its web
  *                         app (webapi/3.9/studiable-item-documents). Returns
@@ -37,8 +42,10 @@
  * challenges essentially ALL datacenter IPs (Vercel/Netlify serverless, the
  * public CORS relays, AI-reader crawlers, even Google's translate.goog):
  * requests get HTTP 403 or the "Just a moment…" JS challenge page, which no
- * plain server can solve. A chain of independent strategies is therefore
- * tried in order, and the first usable payload wins:
+ * plain server can solve. The challenge outcome is INTERMITTENT — the same
+ * URL that is challenged now is often served seconds later (egress IP /
+ * clearance rotation on the crawler pool) — so a chain of independent
+ * strategies is tried in order, and the first usable payload wins:
  *
  *   1. r.jina.ai reader — WITH JINA_API_KEY (free tier available). Jina
  *                         renders pages with real headless browsers and
@@ -51,12 +58,13 @@
  *                         docs.z.ai/api-reference/tools/web-reader). Optional:
  *                         activates when ZAI_API_KEY is set; ZAI_BASE_URL
  *                         overrides the default https://api.z.ai/api/paas/v4.
- *                         MARKDOWN-FIRST with ONE delayed retry, because
- *                         Cloudflare challenges are intermittent — the reader
- *                         often passes on a second attempt seconds later.
- *                         Billing caveat: the reader bills the pay-as-you-go
- *                         API wallet (GLM Coding Plan credits do NOT cover
- *                         it); on error 1113 the chain moves on quietly.
+ *                         PERSISTENT MARKDOWN-FIRST: up to THREE markdown
+ *                         passes across TWO URL variants (the user's slug
+ *                         path and the bare canonical), spaced 2.5s/4s apart,
+ *                         then one leftover-budget 'html' attempt. Billing
+ *                         caveat: the reader bills the pay-as-you-go API
+ *                         wallet (GLM Coding Plan credits do NOT cover it);
+ *                         on error 1113 the chain moves on quietly.
  *   3. direct fetch     — full browser-like headers; occasionally works.
  *   4. webapi JSON      — Quizlet's internal JSON API, direct and via
  *                         allorigins (JSON payloads are smaller and slip past
@@ -111,6 +119,10 @@ export interface QuizletImportResult {
 export interface QuizletFetchOptions {
   /** Use the optional z.ai web reader strategy (default: true). */
   pageReader?: boolean;
+  /** The user's original pasted link. Its slug path (same host, query/hash
+   *  stripped) is tried FIRST by reader strategies — it skips one redirect
+   *  hop and pins the locale the user actually saw. */
+  originalUrl?: string;
   /** web.archive.org origin (overridable in tests to point at a mock). */
   waybackBase?: string;
   /** Wall-clock budget for the entire chain (default: 55s). */
@@ -149,6 +161,27 @@ export function extractQuizletSetId(rawUrl: string): string | null {
   return m ? m[1] : null;
 }
 
+/** URL variants for reader-based strategies: the slug path of the user's
+ *  original link (same host, query/hash stripped) plus the canonical bare
+ *  set URL. Different Quizlet edge nodes can answer for each form. */
+function buildReaderUrls(canonicalUrl: string, originalUrl?: string): string[] {
+  const urls = [canonicalUrl];
+  if (originalUrl) {
+    const trimmed = originalUrl.trim();
+    const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    if (/^https?:\/\/([a-z0-9-]+\.)*quizlet\.[a-z.]+\//i.test(normalized)) {
+      try {
+        const u = new URL(normalized);
+        const slug = `${u.origin}${u.pathname}`;
+        if (!urls.includes(slug)) urls.unshift(slug); // slug first — no redirect
+      } catch {
+        /* ignore malformed input */
+      }
+    }
+  }
+  return urls;
+}
+
 /* ────────────────────────────────────────────────────────────────────────
    Fetch infrastructure
    ──────────────────────────────────────────────────────────────────────── */
@@ -173,7 +206,7 @@ const BROWSER_HEADERS: Record<string, string> = {
 // a strategy is skipped entirely when less than MIN_STRATEGY_BUDGET of the
 // budget remains, so the route can always return a proper JSON error.
 const JINA_KEYED_TIMEOUT_MS = 25_000;
-const ZAI_READER_TIMEOUT_MS = 24_000;
+const ZAI_READER_TIMEOUT_MS = 34_000;
 const DIRECT_TIMEOUT_MS = 5_000;
 const WEBAPI_DIRECT_TIMEOUT_MS = 7_000;
 const WEBAPI_RELAY_TIMEOUT_MS = 14_000;
@@ -213,6 +246,34 @@ function isCloudflareChallenge(body: string): boolean {
     /window\._cf_chl|window\.__cf_chl|cf_chl_opt/i.test(body) ||
     /"firewall_manager"|Checking your browser|Attention Required!/i.test(body)
   );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Terms-section heading (locale-aware)
+   ──────────────────────────────────────────────────────────────────────── */
+
+/** Quizlet renders the terms-section heading in the UI language of the page
+ *  — and a reader's crawler may be geo-routed to a non-English locale (e.g.
+ *  quizlet.com/ch/… serves German or French UI). A reader payload from such
+ *  a page contains a LOCALIZED heading, so validation and parsing must match
+ *  it. Each entry captures the announced count N. */
+const TERMS_HEADER_RES: RegExp[] = [
+  /Terms in this set \((\d+)\)/i, // en
+  /Begriffe in diesem Set \((\d+)\)/i, // de
+  /Termes de cet ensemble \((\d+)\)/i, // fr
+  /Términos en este conjunto \((\d+)\)/i, // es
+  /Termini in questo set \((\d+)\)/i, // it
+  /Termos deste conjunto \((\d+)\)/i, // pt
+  /Termen in deze set \((\d+)\)/i, // nl
+  /Pojęcia w tym zestawie \((\d+)\)/i, // pl
+  /Bu setteki terimler \((\d+)\)/i, // tr
+  /Термины в этом наборе \((\d+)\)/i, // ru
+];
+
+/** True when the body contains a recognized (possibly localized) terms
+ *  heading — used both to validate reader markdown and to parse it. */
+function hasTermsHeader(body: string): boolean {
+  return TERMS_HEADER_RES.some((re) => re.test(body));
 }
 
 async function fetchText(
@@ -407,75 +468,83 @@ async function zaiReaderCall(
 }
 
 /**
- * Fetch `url` through Z.ai's documented Web Reader endpoint
+ * Fetch the set through Z.ai's documented Web Reader endpoint
  * (POST {base}/reader — https://docs.z.ai/api-reference/tools/web-reader).
  *
  * Credentials come from the environment — NO SDK package required:
  *   ZAI_API_KEY   (required)  key from https://z.ai/manage-apikey/apikey-list
  *   ZAI_BASE_URL  (optional)  default https://api.z.ai/api/paas/v4
  *
- * MARKDOWN-FIRST with ONE delayed retry: Cloudflare challenges are
- * intermittent, and the same URL that returns the "Just a moment…" page on
- * one attempt is served properly seconds later (the reader's egress IP /
- * clearance rotates). When markdown works but lacks the terms list, one
- * 'html' retry is made in case __NEXT_DATA__ is available.
+ * PERSISTENT MARKDOWN-FIRST STRATEGY: Quizlet's Cloudflare challenges the
+ * reader's crawler INTERMITTENTLY — the same URL that returns the
+ * "Just a moment…" page on one attempt is often served properly seconds
+ * later (egress IP / clearance rotation). The strategy therefore makes up to
+ * THREE markdown passes across the URL variants (slug path + bare
+ * canonical), spaced 2.5 s / 4 s apart, before one final 'html' attempt
+ * (observed to answer with empty task receipts for Quizlet pages, so it only
+ * gets the leftover budget). A markdown pass that DID return a real page but
+ * lacks a recognized (possibly localized) terms heading is treated as a miss
+ * and the loop continues.
  *
  * Billing rejections (error 1113) abort immediately — a second paid call
  * would fail identically.
  */
-async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOutcome> {
+async function fetchViaZaiReader(urls: string[], budgetMs: number): Promise<FetchOutcome> {
   const apiKey = (process.env.ZAI_API_KEY ?? '').trim();
   if (!apiKey) return { ok: false, error: 'ZAI_API_KEY not set on the server' };
   const endpoint = zaiReaderEndpoint((process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4').trim());
+
+  const primary = urls[0];
+  const secondary = urls[1] ?? urls[0];
+  const attempts: Array<{ url: string; format: 'markdown' | 'html'; delayBeforeMs: number; share: number }> = [
+    { url: primary, format: 'markdown', delayBeforeMs: 0, share: 0.28 },
+    { url: secondary, format: 'markdown', delayBeforeMs: 2_500, share: 0.28 },
+    { url: primary, format: 'markdown', delayBeforeMs: 4_000, share: 0.28 },
+    { url: primary, format: 'html', delayBeforeMs: 0, share: 0.16 },
+  ];
 
   // Simple sequential accounting: spent tracks the budget consumed so far.
   let spent = 0;
   const take = (want: number) => Math.max(MIN_STRATEGY_BUDGET_MS, Math.min(want, budgetMs - spent));
 
-  const mdBudget = take(Math.floor(budgetMs * 0.4));
-  spent += mdBudget;
-  let md = await zaiReaderCall(endpoint, apiKey, url, 'markdown', mdBudget);
-
-  // Cloudflare challenges are intermittent — one short-delay retry fixes a
-  // large share of them without wasting the html attempt.
-  if (!md.ok && !md.billingBlocked) {
-    const remainingAfterMd = budgetMs - spent;
-    if (remainingAfterMd >= MIN_STRATEGY_BUDGET_MS) {
-      await new Promise((r) => setTimeout(r, 2_500));
-      spent += 2_500;
-      const retryBudget = take(Math.floor(budgetMs * 0.25));
-      spent += retryBudget;
-      md = await zaiReaderCall(endpoint, apiKey, url, 'markdown', retryBudget);
+  let last: FetchOutcome | null = null;
+  for (const attempt of attempts) {
+    if (attempt.delayBeforeMs > 0) {
+      if (budgetMs - spent < attempt.delayBeforeMs + MIN_STRATEGY_BUDGET_MS) break;
+      await new Promise((r) => setTimeout(r, attempt.delayBeforeMs));
+      spent += attempt.delayBeforeMs;
     }
-  }
+    const budget = take(Math.floor(budgetMs * attempt.share));
+    if (budget < MIN_STRATEGY_BUDGET_MS || budgetMs - spent < MIN_STRATEGY_BUDGET_MS) break;
+    spent += budget;
 
-  if (md.ok) {
-    if (md.body.includes('Terms in this set')) {
-      return { ok: true, body: md.body, format: 'reader-md' };
-    }
-    // Markdown worked but carries no terms list (unexpected for a flashcard
-    // set) — one retry with 'html', which carries __NEXT_DATA__ when the
-    // reader honours the format.
-    const htmlBudget = budgetMs - spent;
-    if (htmlBudget >= MIN_STRATEGY_BUDGET_MS) {
-      spent += htmlBudget;
-      const html = await zaiReaderCall(endpoint, apiKey, url, 'html', htmlBudget);
-      if (html.ok && html.body.includes('__NEXT_DATA__')) {
-        return { ok: true, body: html.body, format: 'html' };
+    const outcome = await zaiReaderCall(endpoint, apiKey, attempt.url, attempt.format, budget);
+    if (outcome.ok) {
+      if (attempt.format === 'markdown') {
+        if (hasTermsHeader(outcome.body)) {
+          return { ok: true, body: outcome.body, format: 'reader-md' };
+        }
+        // The reader returned a page but no recognized terms heading
+        // (a shell page, or a locale not covered by the matcher) — try the
+        // next attempt instead of giving up.
+        last = {
+          ok: false,
+          error: "markdown had no recognized 'Terms in this set (N)' heading (localized UI or shell page)",
+        };
+        continue;
       }
-      const htmlErr = html.ok ? 'html had no embedded page data' : html.error;
-      return {
-        ok: false,
-        error: `markdown had no Quizlet terms list; html retry: ${htmlErr}`,
-      };
+      // html attempt — only useful when __NEXT_DATA__ made it through.
+      if (outcome.body.includes('__NEXT_DATA__')) {
+        return { ok: true, body: outcome.body, format: 'html' };
+      }
+      last = { ok: false, error: 'html had no embedded page data' };
+      continue;
     }
-    return { ok: false, error: 'markdown had no Quizlet terms list (no budget left for the html retry)' };
+    // Billing rejections make every further attempt pointless.
+    if (outcome.billingBlocked) return outcome;
+    last = outcome;
   }
-
-  // Markdown call failed. Billing rejections make a second format pointless.
-  if (md.billingBlocked) return md;
-  // Other failures (network/timeout/server) — surface the last error.
-  return md;
+  return last ?? { ok: false, error: 'no reader attempts executed' };
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -724,13 +793,17 @@ export async function fetchQuizletPage(
   const startedAt = Date.now();
   const remaining = () => deadlineMs - (Date.now() - startedAt);
 
+  // Reader strategies get both the user's slug path (preferred — no redirect
+  // hop, locale pinned) and the bare canonical URL.
+  const readerUrls = buildReaderUrls(canonicalUrl, opts.originalUrl);
+
   const strategies: Strategy[] = [
     {
       name: 'jina reader (JINA_API_KEY)',
       via: 'jina reader',
       cap: JINA_KEYED_TIMEOUT_MS,
       requiresEnv: { name: 'JINA_API_KEY', value: (process.env.JINA_API_KEY ?? '').trim() },
-      run: (budget) => fetchViaJina(canonicalUrl, 'html', budget),
+      run: (budget) => fetchViaJina(readerUrls[0], 'html', budget),
     },
     {
       name: 'z-ai web reader',
@@ -739,7 +812,7 @@ export async function fetchQuizletPage(
       requiresEnv: { name: 'ZAI_API_KEY', value: (process.env.ZAI_API_KEY ?? '').trim() },
       run: (budget) => (opts.pageReader === false
         ? Promise.resolve({ ok: false, error: 'disabled' })
-        : fetchViaZaiReader(canonicalUrl, budget)),
+        : fetchViaZaiReader(readerUrls, budget)),
     },
     {
       name: 'direct fetch',
@@ -782,7 +855,7 @@ export async function fetchQuizletPage(
       name: 'r.jina.ai relay (markdown)',
       via: 'r.jina.ai relay',
       cap: JINA_FREE_TIMEOUT_MS,
-      run: (budget) => fetchViaJina(canonicalUrl, 'markdown', budget),
+      run: (budget) => fetchViaJina(readerUrls[0], 'markdown', budget),
     },
     {
       name: 'codetabs relay',
@@ -833,7 +906,7 @@ export async function fetchQuizletPage(
     const usable =
       result.ok &&
       (result.format === 'webapi-json' ||
-        (result.format === 'reader-md' && result.body.includes('Terms in this set')) ||
+        (result.format === 'reader-md' && hasTermsHeader(result.body)) ||
         (result.format === 'html' && result.body.includes('__NEXT_DATA__')));
     if (result.ok && usable) {
       return { payload: result.body, format: result.format ?? 'html', via: strategy.via };
@@ -1036,8 +1109,10 @@ export function parseWebapiJson(payload: string, canonicalUrl: string, setId: st
 /** Parse a reader's markdown rendering of a Quizlet set page (payload format
     'reader-md').
 
-    Quizlet server-renders a "Terms in this set (N)" section whose entries
-    are blank-line separated and strictly alternate term / definition, e.g.:
+    Quizlet server-renders a terms section whose heading is localized (e.g.
+    "Terms in this set (62)" in English, "Begriffe in diesem Set (62)" in
+    German, "Termes de cet ensemble (62)" in French) and whose entries are
+    blank-line separated and strictly alternate term / definition:
 
         Terms in this set (62)
 
@@ -1059,10 +1134,16 @@ export function parseQuizletMarkdown(markdown: string, canonicalUrl: string, set
       "The reader received Quizlet's Cloudflare 'Just a moment…' bot-check instead of the set. Try again shortly.",
     );
   }
-  const header = markdown.match(/Terms in this set \((\d+)\)/);
+  // Locale-aware heading match — see TERMS_HEADER_RES for the covered UI
+  // languages (Quizlet geo-routes crawlers to localized pages).
+  let header: RegExpMatchArray | null = null;
+  for (const re of TERMS_HEADER_RES) {
+    header = markdown.match(re);
+    if (header) break;
+  }
   if (!header) {
     throw new Error(
-      "Couldn't find the terms list in the Quizlet page text — the set may be private, empty, or not a flashcard set.",
+      "Couldn't find the terms list in the Quizlet page text — the set may be private, empty, not a flashcard set, or rendered in an unsupported UI language.",
     );
   }
   const expected = Number(header[1]);
