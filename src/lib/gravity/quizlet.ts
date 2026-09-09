@@ -3,75 +3,91 @@
  * the terms & definitions.
  *
  * ── How the parsing works ────────────────────────────────────────────────
- * Two payload shapes are supported, and the fetch chain tags which one it
+ * Three payload shapes are supported, and the fetch chain tags which one it
  * delivered:
  *
- *   format 'html'      — the raw SSR page. Quizlet embeds the full card data
- *                        in a <script id="__NEXT_DATA__"> JSON blob:
+ *   format 'html'       — the raw SSR page. Quizlet embeds the full card data
+ *                         in a <script id="__NEXT_DATA__"> JSON blob:
  *
- *                          { "rank": 0, "isDeleted": false,
- *                            "cardSides": [
- *                              { "label": "word",       "media": [{ "plainText": "accueillir" }] },
- *                              { "label": "definition", "media": [{ "plainText": "empfangen"  }] } ] }
+ *                           { "rank": 0, "isDeleted": false,
+ *                             "cardSides": [
+ *                               { "label": "word",       "media": [{ "plainText": "accueillir" }] },
+ *                               { "label": "definition", "media": [{ "plainText": "empfangen"  }] } ] }
  *
- *                        The blob is sometimes nested one level deeper (a JSON
- *                        *string* inside the JSON), so the walker json.parses
- *                        any string that mentions "cardSides".
+ *                         The blob is sometimes nested one level deeper (a JSON
+ *                         *string* inside the JSON), so the walker json.parses
+ *                         any string that mentions "cardSides".
  *
- *   format 'reader-md' — the z.ai web reader's markdown rendering of the
- *                        page. Quizlet server-renders a "Terms in this set
- *                        (N)" section whose entries are blank-line separated
- *                        and strictly alternate term / definition, so pairs
- *                        are reconstructed positionally and validated
- *                        against the announced count N.
+ *   format 'reader-md'  — a reader's markdown rendering of the page (z.ai web
+ *                         reader or r.jina.ai). Quizlet server-renders a
+ *                         "Terms in this set (N)" section whose entries are
+ *                         blank-line separated and strictly alternate term /
+ *                         definition, so pairs are reconstructed positionally
+ *                         and validated against the announced count N.
+ *
+ *   format 'webapi-json' — Quizlet's own internal JSON API used by its web
+ *                         app (webapi/3.9/studiable-item-documents). Returns
+ *                         the SAME studiableItem objects as __NEXT_DATA__
+ *                         (cardSides / rank / isDeleted), paginated. The
+ *                         strategy concatenates pages, the parser reuses the
+ *                         shared cardSides walker.
  *
  * ── How the page is fetched ──────────────────────────────────────────────
- * Quizlet aggressively blocks datacenter IPs (403 challenges / connection
- * timeouts), so a plain server-side fetch is only the FIRST of several
- * strategies. The chain runs in order and the first usable payload wins:
+ * Quizlet sits behind aggressive Cloudflare bot protection. Since 2026 it
+ * challenges essentially ALL datacenter IPs (Vercel/Netlify serverless, the
+ * public CORS relays, AI-reader crawlers, even Google's translate.goog):
+ * requests get HTTP 403 or the "Just a moment…" JS challenge page, which no
+ * plain server can solve. A chain of independent strategies is therefore
+ * tried in order, and the first usable payload wins:
  *
- *   1. z.ai web reader   — the OFFICIAL public Web Reader REST API
- *                          (POST https://api.z.ai/api/paas/v4/reader —
- *                          docs.z.ai/api-reference/tools/web-reader).
- *                          OPTIONAL: activates only when ZAI_API_KEY is set;
- *                          ZAI_BASE_URL overrides the default
- *                          https://api.z.ai/api/paas/v4 base. NO SDK package
- *                          is needed — it is a plain fetch with Bearer auth.
- *                          MARKDOWN-FIRST: `return_format: 'markdown'` is
- *                          requested because the 'html' format has been
- *                          observed to answer HTTP 200 with an EMPTY result
- *                          for Quizlet's heavy pages; the markdown rendering
- *                          carries the full "Terms in this set (N)" list and
- *                          is parsed by parseQuizletMarkdown(). If the
- *                          markdown somehow lacks the terms list, the reader
- *                          is retried once with return_format 'html' (which
- *                          yields __NEXT_DATA__ when Z.ai honours it).
- *                          BILLING CAVEAT: the reader bills the pay-as-you-go
- *                          API wallet — GLM Coding Plan credits do NOT cover
- *                          it. On error 1113 ("Insufficient balance or no
- *                          resource package") the chain simply moves on to
- *                          the free strategies below.
- *   2. direct fetch      — full browser-like headers; works from some hosts.
- *   3. web.archive.org   — latest Wayback snapshot of the set page. The `id_`
- *                          playback modifier serves the ORIGINAL page bytes
- *                          (no Wayback rewriting), so the embedded
- *                          __NEXT_DATA__ payload is intact and parseable.
- *   4. web.archive.org   — if no snapshot exists yet, ask Save-Page-Now to
- *      (Save-Page-Now)     archive the page right now, then fetch the fresh
- *                          snapshot the same way.
- *   5–7. public relays   — allorigins / r.jina.ai (HTML mode) / codetabs
- *                          read-only proxies; each one fetches from its own
- *                          IP space, so a block on one does not imply a block
- *                          on another.
+ *   1. r.jina.ai reader — WITH JINA_API_KEY (free tier available). Jina
+ *                         renders pages with real headless browsers and
+ *                         passes Cloudflare for most sites, so this is the
+ *                         single most reliable server-side path. HTML first
+ *                         (carries __NEXT_DATA__), markdown as fallback.
+ *                         Without a key the no-auth endpoint is tried late in
+ *                         the chain as a cheap hail-mary.
+ *   2. z.ai web reader  — official Web Reader REST API (POST {base}/reader,
+ *                         docs.z.ai/api-reference/tools/web-reader). Optional:
+ *                         activates when ZAI_API_KEY is set; ZAI_BASE_URL
+ *                         overrides the default https://api.z.ai/api/paas/v4.
+ *                         MARKDOWN-FIRST with ONE delayed retry, because
+ *                         Cloudflare challenges are intermittent — the reader
+ *                         often passes on a second attempt seconds later.
+ *                         Billing caveat: the reader bills the pay-as-you-go
+ *                         API wallet (GLM Coding Plan credits do NOT cover
+ *                         it); on error 1113 the chain moves on quietly.
+ *   3. direct fetch     — full browser-like headers; occasionally works.
+ *   4. webapi JSON      — Quizlet's internal JSON API, direct and via
+ *                         allorigins (JSON payloads are smaller and slip past
+ *                         crowded relays more often than 500 KB HTML pages).
+ *   5. web.archive.org  — latest Wayback snapshot (both the bare /<id>/ and
+ *                         the /<id>/flash-cards/ URL form — Wayback keeps
+ *                         redirect captures separately, so one form can have
+ *                         a real capture when the other only has a 302). The
+ *                         `id_` playback modifier serves ORIGINAL bytes, so
+ *                         __NEXT_DATA__ survives.
+ *   6. Save-Page-Now    — if nothing is archived yet, ask Wayback to capture
+ *                         the page now, then fetch the fresh snapshot.
+ *   7. public relays    — allorigins (HTML) / jina without key / codetabs.
+ *                         These relays fetch from their own IP space, so a
+ *                         block on one does not imply a block on another —
+ *                         but expect most of them to be challenged too.
+ *
+ * Responses that smell like a Cloudflare challenge ("Just a moment…",
+ * challenge-platform, cf-chl…) are detected explicitly and reported as
+ * "blocked by Cloudflare challenge" instead of a generic parse failure.
  *
  * The whole chain runs inside a wall-clock budget (deadline guard) so the
  * API route always answers with a clean JSON error before the hosting
- * platform kills the function. Missing configuration (ZAI_API_KEY) is
- * reported EXPLICITLY in the error message — a silently skipped strategy is
- * indistinguishable from a mysteriously broken one when debugging a deploy.
+ * platform kills the function. Missing configuration (ZAI_API_KEY,
+ * JINA_API_KEY) is reported EXPLICITLY in the error message — a silently
+ * skipped strategy is indistinguishable from a mysteriously broken one when
+ * debugging a deploy.
  *
- * We only ever request https://quizlet.com/<numeric-id>/ (plus its Wayback
- * copies) so the endpoint can never be abused as a generic proxy.
+ * We only ever request https://quizlet.com/<numeric-id>/ URLs (plus their
+ * Wayback copies and their webapi JSON), so the endpoint can never be abused
+ * as a generic proxy.
  *
  * This module must stay server-only (uses fetch of arbitrary remote URLs).
  */
@@ -101,11 +117,11 @@ export interface QuizletFetchOptions {
   deadlineMs?: number;
 }
 
-/** The two payload shapes the chain can deliver. */
-export type QuizletPayloadFormat = 'html' | 'reader-md';
+/** The payload shapes the chain can deliver. */
+export type QuizletPayloadFormat = 'html' | 'reader-md' | 'webapi-json';
 
 export interface QuizletFetchedPage {
-  /** Raw page HTML ('html') or the reader's markdown rendering ('reader-md'). */
+  /** Raw page HTML ('html'), reader markdown ('reader-md') or webapi JSON ('webapi-json'). */
   payload: string;
   format: QuizletPayloadFormat;
   via: string;
@@ -156,14 +172,17 @@ const BROWSER_HEADERS: Record<string, string> = {
 // Per-strategy hard caps (ms). Strategies also honor the global deadline —
 // a strategy is skipped entirely when less than MIN_STRATEGY_BUDGET of the
 // budget remains, so the route can always return a proper JSON error.
-const ZAI_READER_TIMEOUT_MS = 30_000;
-const DIRECT_TIMEOUT_MS = 6_000;
-const WAYBACK_LATEST_TIMEOUT_MS = 20_000;
+const JINA_KEYED_TIMEOUT_MS = 25_000;
+const ZAI_READER_TIMEOUT_MS = 24_000;
+const DIRECT_TIMEOUT_MS = 5_000;
+const WEBAPI_DIRECT_TIMEOUT_MS = 7_000;
+const WEBAPI_RELAY_TIMEOUT_MS = 14_000;
+const ALLORIGINS_TIMEOUT_MS = 12_000;
+const WAYBACK_LATEST_TIMEOUT_MS = 16_000;
 const SAVE_PAGE_NOW_TIMEOUT_MS = 40_000;
-const WAYBACK_FETCH_TIMEOUT_MS = 15_000;
+const WAYBACK_FETCH_TIMEOUT_MS = 12_000;
 const CDX_TIMEOUT_MS = 8_000;
-const ALLORIGINS_TIMEOUT_MS = 10_000;
-const JINA_TIMEOUT_MS = 8_000;
+const JINA_FREE_TIMEOUT_MS = 8_000;
 const CODETABS_TIMEOUT_MS = 8_000;
 
 const MIN_STRATEGY_BUDGET_MS = 3_000;
@@ -171,7 +190,7 @@ const DEFAULT_DEADLINE_MS = 55_000;
 const DEFAULT_WAYBACK_BASE = 'https://web.archive.org';
 
 type FetchOutcome =
-  | { ok: true; body: string; /** Set by the reader strategy for markdown payloads. */ format?: QuizletPayloadFormat }
+  | { ok: true; body: string; /** Set by reader/markdown strategies. */ format?: QuizletPayloadFormat }
   | {
       ok: false;
       error: string;
@@ -179,9 +198,28 @@ type FetchOutcome =
           package" — the key is VALID, the reader just isn't covered by the
           Coding Plan (it bills the separate pay-as-you-go API wallet). */
       billingBlocked?: boolean;
+      /** The upstream answered with a Cloudflare "Just a moment…" challenge
+          page — i.e. the path is ALIVE but bot-blocked. Lets the final error
+          say something actionable instead of a generic timeout. */
+      cloudflareBlocked?: boolean;
     };
 
-async function fetchText(url: string, timeoutMs: number, headers: Record<string, string> = BROWSER_HEADERS): Promise<FetchOutcome> {
+/** Detect Cloudflare's interstitial challenge page (it can arrive as HTTP 403
+    OR as HTTP 200 when a reader helpfully renders the challenge for us). */
+function isCloudflareChallenge(body: string): boolean {
+  return (
+    /<title>[^<]*Just a moment[^<]*<\/title>/i.test(body) ||
+    /challenge-platform\/(?:h\/b|scripts)/i.test(body) ||
+    /window\._cf_chl|window\.__cf_chl|cf_chl_opt/i.test(body) ||
+    /"firewall_manager"|Checking your browser|Attention Required!/i.test(body)
+  );
+}
+
+async function fetchText(
+  url: string,
+  timeoutMs: number,
+  headers: Record<string, string> = BROWSER_HEADERS,
+): Promise<FetchOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -190,8 +228,16 @@ async function fetchText(url: string, timeoutMs: number, headers: Record<string,
       redirect: 'follow',
       signal: controller.signal,
     });
+    const body = await res.text();
+    if (isCloudflareChallenge(body)) {
+      return {
+        ok: false,
+        cloudflareBlocked: true,
+        error: `blocked by Quizlet's Cloudflare challenge (HTTP ${res.status} "Just a moment…" page)`,
+      };
+    }
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-    return { ok: true, body: await res.text() };
+    return { ok: true, body };
   } catch (err) {
     return {
       ok: false,
@@ -203,7 +249,39 @@ async function fetchText(url: string, timeoutMs: number, headers: Record<string,
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Strategy 1 — z.ai web reader (official public REST API, optional)
+   Strategy 1a — r.jina.ai reader (best path when JINA_API_KEY is set)
+   ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Fetch `url` through r.jina.ai. Jina renders the page with real headless
+ * browsers (which execute — and usually pass — Cloudflare's challenge), so
+ * with a key this is the most dependable server-side route to a full SSR
+ * payload. Free keys: https://jina.ai/reader (rate-limited, no cost).
+ *
+ *   JINA_API_KEY   (optional) enables the high-priority keyed strategy
+ *
+ * HTML is requested first because it carries __NEXT_DATA__; markdown (parsed
+ * by parseQuizletMarkdown) is the fallback when the HTML pass fails.
+ */
+async function fetchViaJina(
+  url: string,
+  mode: 'html' | 'markdown',
+  budgetMs: number,
+): Promise<FetchOutcome> {
+  const apiKey = (process.env.JINA_API_KEY ?? '').trim();
+  const headers: Record<string, string> = {
+    'User-Agent': BROWSER_HEADERS['User-Agent'],
+    'X-Return-Format': mode,
+    'X-Timeout': '20',
+  };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const outcome = await fetchText(`https://r.jina.ai/${url}`, budgetMs, headers);
+  if (outcome.ok) outcome.format = mode === 'html' ? 'html' : 'reader-md';
+  return outcome;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Strategy 1b — z.ai web reader (official public REST API, optional)
    ──────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -287,9 +365,11 @@ async function zaiReaderCall(
         /* body was not JSON — fall through to the raw text below */
       }
       const detail = (typeof message === 'string' && message) || raw.slice(0, 160);
+      const cloudflareBlocked = isCloudflareChallenge(raw);
       return {
         ok: false,
         billingBlocked: isZaiBillingError(code, message ?? raw),
+        cloudflareBlocked,
         error: `HTTP ${res.status}${detail ? ` — ${detail}` : ''}`,
       };
     }
@@ -310,6 +390,11 @@ async function zaiReaderCall(
         error: `web reader: ${detail}`,
       };
     }
+    // The reader happily renders Cloudflare's interstitial — detect it so the
+    // caller retries instead of treating the challenge as page content.
+    if (isCloudflareChallenge(content)) {
+      return { ok: false, cloudflareBlocked: true, error: "reader got Cloudflare's 'Just a moment…' challenge page" };
+    }
     return { ok: true, body: content };
   } catch (err) {
     return {
@@ -329,12 +414,11 @@ async function zaiReaderCall(
  *   ZAI_API_KEY   (required)  key from https://z.ai/manage-apikey/apikey-list
  *   ZAI_BASE_URL  (optional)  default https://api.z.ai/api/paas/v4
  *
- * MARKDOWN-FIRST: live probing (2026-09) showed `return_format:'html'`
- * returns an empty task receipt for Quizlet pages, while 'markdown' returns
- * the rendered page including the full "Terms in this set (N)" list. So the
- * markdown format is requested first and validated against that marker;
- * only when the marker is missing (but the call itself worked) do we retry
- * once with 'html' in case __NEXT_DATA__ is available.
+ * MARKDOWN-FIRST with ONE delayed retry: Cloudflare challenges are
+ * intermittent, and the same URL that returns the "Just a moment…" page on
+ * one attempt is served properly seconds later (the reader's egress IP /
+ * clearance rotates). When markdown works but lacks the terms list, one
+ * 'html' retry is made in case __NEXT_DATA__ is available.
  *
  * Billing rejections (error 1113) abort immediately — a second paid call
  * would fail identically.
@@ -344,9 +428,26 @@ async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOu
   if (!apiKey) return { ok: false, error: 'ZAI_API_KEY not set on the server' };
   const endpoint = zaiReaderEndpoint((process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4').trim());
 
-  // Markdown gets the lion's share of the budget — it is the proven path.
-  const mdBudget = Math.max(MIN_STRATEGY_BUDGET_MS, Math.floor(budgetMs * 0.65));
-  const md = await zaiReaderCall(endpoint, apiKey, url, 'markdown', mdBudget);
+  // Simple sequential accounting: spent tracks the budget consumed so far.
+  let spent = 0;
+  const take = (want: number) => Math.max(MIN_STRATEGY_BUDGET_MS, Math.min(want, budgetMs - spent));
+
+  const mdBudget = take(Math.floor(budgetMs * 0.4));
+  spent += mdBudget;
+  let md = await zaiReaderCall(endpoint, apiKey, url, 'markdown', mdBudget);
+
+  // Cloudflare challenges are intermittent — one short-delay retry fixes a
+  // large share of them without wasting the html attempt.
+  if (!md.ok && !md.billingBlocked) {
+    const remainingAfterMd = budgetMs - spent;
+    if (remainingAfterMd >= MIN_STRATEGY_BUDGET_MS) {
+      await new Promise((r) => setTimeout(r, 2_500));
+      spent += 2_500;
+      const retryBudget = take(Math.floor(budgetMs * 0.25));
+      spent += retryBudget;
+      md = await zaiReaderCall(endpoint, apiKey, url, 'markdown', retryBudget);
+    }
+  }
 
   if (md.ok) {
     if (md.body.includes('Terms in this set')) {
@@ -355,23 +456,121 @@ async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOu
     // Markdown worked but carries no terms list (unexpected for a flashcard
     // set) — one retry with 'html', which carries __NEXT_DATA__ when the
     // reader honours the format.
-    const htmlBudget = budgetMs - mdBudget;
+    const htmlBudget = budgetMs - spent;
     if (htmlBudget >= MIN_STRATEGY_BUDGET_MS) {
+      spent += htmlBudget;
       const html = await zaiReaderCall(endpoint, apiKey, url, 'html', htmlBudget);
       if (html.ok && html.body.includes('__NEXT_DATA__')) {
         return { ok: true, body: html.body, format: 'html' };
       }
       const htmlErr = html.ok ? 'html had no embedded page data' : html.error;
-      return { ok: false, error: `markdown had no Quizlet terms list; html retry: ${htmlErr}` };
+      return {
+        ok: false,
+        error: `markdown had no Quizlet terms list; html retry: ${htmlErr}`,
+      };
     }
     return { ok: false, error: 'markdown had no Quizlet terms list (no budget left for the html retry)' };
   }
 
   // Markdown call failed. Billing rejections make a second format pointless.
   if (md.billingBlocked) return md;
-  // Other failures (network/timeout/server) — the html retry would face the
-  // same infrastructure, so surface the error directly.
+  // Other failures (network/timeout/server) — surface the last error.
   return md;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Strategy 2 — Quizlet's internal webapi JSON (direct + via allorigins)
+   ──────────────────────────────────────────────────────────────────────── */
+
+/** Build one webapi page request for a set. Same endpoint Quizlet's own web
+    app calls; public sets answer without auth (when Cloudflare lets the
+    request through). */
+function webapiUrl(setId: string, page: number): string {
+  const filters =
+    `filters%5BstudiableContainerId%5D=${encodeURIComponent(setId)}` +
+    `&filters%5BstudiableContainerType%5D=1`;
+  return `https://quizlet.com/webapi/3.9/studiable-item-documents?${filters}&perPage=100&page=${page}`;
+}
+
+/** Wrap a URL in a relay transport, or pass it through for 'direct'. */
+function viaTransport(transport: 'direct' | 'allorigins', url: string): string {
+  return transport === 'direct' ? url : `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+}
+
+function parseWebapiPage(body: string): { items: unknown[]; total: number | null } {
+  const json = JSON.parse(body) as {
+    responses?: Array<{
+      models?: { studiableItems?: unknown[] };
+      paging?: { correction?: { total?: number } };
+    }>;
+  };
+  const resp = json?.responses?.[0];
+  const items = resp?.models?.studiableItems;
+  if (!Array.isArray(items)) throw new Error('webapi response has no studiableItems');
+  const total = resp?.paging?.correction?.total ?? null;
+  return { items, total: typeof total === 'number' ? total : null };
+}
+
+/**
+ * Fetch ALL studiable items for a set through Quizlet's internal JSON API,
+ * using `transport` (direct server-side fetch, or the allorigins relay).
+ * Pages of 100 items are concatenated until the announced total is reached
+ * (hard cap 8 pages / 800 cards) or the budget runs out. Returns a
+ * 'webapi-json' payload: a JSON array string of raw studiableItems, which
+ * parseWebapiJson() feeds into the shared cardSides walker.
+ */
+async function fetchViaWebapi(
+  setId: string,
+  transport: 'direct' | 'allorigins',
+  budgetMs: number,
+): Promise<FetchOutcome> {
+  const deadline = Date.now() + budgetMs;
+  const headers: Record<string, string> = {
+    ...BROWSER_HEADERS,
+    Accept: 'application/json',
+    Referer: `https://quizlet.com/${setId}/`,
+  };
+
+  const allItems: unknown[] = [];
+  let total: number | null = null;
+  const maxPages = 8;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const pageBudget = Math.min(transport === 'direct' ? 7_000 : 14_000, deadline - Date.now());
+    if (pageBudget < MIN_STRATEGY_BUDGET_MS) break;
+    const outcome = await fetchText(viaTransport(transport, webapiUrl(setId, page)), pageBudget, headers);
+    if (!outcome.ok) {
+      // Page 1 failing means the whole strategy failed; a later page failing
+      // just ends pagination — keep the partial result we already have.
+      if (page === 1) {
+        return { ok: false, cloudflareBlocked: outcome.cloudflareBlocked, error: outcome.error };
+      }
+      break;
+    }
+    let parsed: { items: unknown[]; total: number | null };
+    try {
+      parsed = parseWebapiPage(outcome.body);
+    } catch {
+      if (page === 1) {
+        return { ok: false, error: 'webapi answered with unexpected JSON (no studiableItems)' };
+      }
+      break; // keep the earlier pages
+    }
+    allItems.push(...parsed.items);
+    total = parsed.total ?? total;
+    // Full page fetched and the announced total not yet reached → keep going.
+    const fullPage = parsed.items.length >= 100;
+    if (!fullPage || (total !== null && allItems.length >= total)) break;
+  }
+
+  if (allItems.length === 0) {
+    return { ok: false, error: 'webapi returned 0 studiable items' };
+  }
+  return {
+    ok: true,
+    body: JSON.stringify(allItems),
+    format: 'webapi-json',
+  };
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -384,9 +583,24 @@ async function fetchViaZaiReader(url: string, budgetMs: number): Promise<FetchOu
  * i.e. the most recent capture — and the `id_` modifier disables all URL/
  * markup rewriting so the response is byte-for-byte the page Quizlet served
  * to the crawler (including __NEXT_DATA__).
+ *
+ * BOTH URL forms of the set are tried (bare /<id>/ and /<id>/flash-cards/):
+ * Wayback stores redirect captures separately, so the bare form can hold a
+ * mere 302 record whose Location leaves the archive while the flash-cards
+ * form holds the real page.
  */
 async function fetchViaWaybackLatest(pageUrl: string, budgetMs: number, waybackBase: string): Promise<FetchOutcome> {
-  return fetchText(`${waybackBase}/web/9999id_/${pageUrl}`, budgetMs);
+  const variants = [pageUrl, `${pageUrl.replace(/\/+$/, '')}/flash-cards/`];
+  let last: FetchOutcome = { ok: false, error: 'not attempted' };
+  for (let i = 0; i < variants.length; i++) {
+    const remaining = budgetMs - (i * budgetMs) / variants.length;
+    if (remaining < MIN_STRATEGY_BUDGET_MS) break;
+    last = await fetchText(`${waybackBase}/web/9999id_/${variants[i]}`, Math.floor(remaining));
+    if (last.ok && last.body.includes('__NEXT_DATA__')) return last;
+    // A 200 without page data (e.g. an archived challenge page) — try the
+    // next variant before giving up.
+  }
+  return last;
 }
 
 /** Extract a Wayback timestamp (YYYYMMDDhhmmss…) from a URL path. */
@@ -489,16 +703,22 @@ interface Strategy {
   name: string;
   via: string;
   cap: number;
+  /** When true the strategy is skipped (with a visible note) unless its env
+      var is configured on the server. */
+  requiresEnv?: { name: string; value: string };
   run: (budgetMs: number) => Promise<FetchOutcome>;
 }
 
-/** Fetch a parseable Quizlet set payload (raw HTML or reader markdown);
-    throws with a user-friendly, diagnostic message when every strategy is
-    blocked, misconfigured, or runs out of budget. */
+/** Fetch a parseable Quizlet set payload (raw HTML, reader markdown or
+    webapi JSON); throws with a user-friendly, diagnostic message when every
+    strategy is blocked, misconfigured, or runs out of budget. */
 export async function fetchQuizletPage(
   canonicalUrl: string,
   opts: QuizletFetchOptions = {},
 ): Promise<QuizletFetchedPage> {
+  const setId = extractQuizletSetId(canonicalUrl);
+  if (!setId) throw new Error(`Internal error: '${canonicalUrl}' is not a canonical Quizlet set URL.`);
+
   const waybackBase = opts.waybackBase ?? DEFAULT_WAYBACK_BASE;
   const deadlineMs = opts.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const startedAt = Date.now();
@@ -506,16 +726,38 @@ export async function fetchQuizletPage(
 
   const strategies: Strategy[] = [
     {
+      name: 'jina reader (JINA_API_KEY)',
+      via: 'jina reader',
+      cap: JINA_KEYED_TIMEOUT_MS,
+      requiresEnv: { name: 'JINA_API_KEY', value: (process.env.JINA_API_KEY ?? '').trim() },
+      run: (budget) => fetchViaJina(canonicalUrl, 'html', budget),
+    },
+    {
       name: 'z-ai web reader',
       via: 'z-ai web reader',
       cap: ZAI_READER_TIMEOUT_MS,
-      run: (budget) => fetchViaZaiReader(canonicalUrl, budget),
+      requiresEnv: { name: 'ZAI_API_KEY', value: (process.env.ZAI_API_KEY ?? '').trim() },
+      run: (budget) => (opts.pageReader === false
+        ? Promise.resolve({ ok: false, error: 'disabled' })
+        : fetchViaZaiReader(canonicalUrl, budget)),
     },
     {
       name: 'direct fetch',
       via: 'direct fetch',
       cap: DIRECT_TIMEOUT_MS,
       run: (budget) => fetchText(canonicalUrl, budget),
+    },
+    {
+      name: 'quizlet webapi (direct)',
+      via: 'quizlet webapi (direct)',
+      cap: WEBAPI_DIRECT_TIMEOUT_MS,
+      run: (budget) => fetchViaWebapi(setId, 'direct', budget),
+    },
+    {
+      name: 'quizlet webapi (allorigins relay)',
+      via: 'quizlet webapi (allorigins relay)',
+      cap: WEBAPI_RELAY_TIMEOUT_MS,
+      run: (budget) => fetchViaWebapi(setId, 'allorigins', budget),
     },
     {
       name: 'web.archive.org snapshot',
@@ -537,14 +779,10 @@ export async function fetchQuizletPage(
         fetchText(`https://api.allorigins.win/raw?url=${encodeURIComponent(canonicalUrl)}`, budget),
     },
     {
-      name: 'r.jina.ai relay',
+      name: 'r.jina.ai relay (markdown)',
       via: 'r.jina.ai relay',
-      cap: JINA_TIMEOUT_MS,
-      run: (budget) =>
-        fetchText(`https://r.jina.ai/${canonicalUrl}`, budget, {
-          ...BROWSER_HEADERS,
-          'X-Return-Format': 'html',
-        }),
+      cap: JINA_FREE_TIMEOUT_MS,
+      run: (budget) => fetchViaJina(canonicalUrl, 'markdown', budget),
     },
     {
       name: 'codetabs relay',
@@ -558,6 +796,10 @@ export async function fetchQuizletPage(
   const attempted: string[] = [];
   const errors: string[] = [];
   let lastError = 'unknown error';
+  // Remember whether ANY strategy reported the Cloudflare challenge — the
+  // final message should name the real adversary instead of a generic
+  // "try again later".
+  let anyCloudflare = false;
   // The reader is the one strategy whose failure is usually actionable
   // (missing key, no balance, wrong base URL) — remember its outcome for the
   // final diagnosis even when later strategies fail for other reasons.
@@ -567,14 +809,17 @@ export async function fetchQuizletPage(
   let zaiBillingHint: string | null = null;
 
   for (const strategy of strategies) {
-    if (strategy.name === 'z-ai web reader') {
-      if (opts.pageReader === false) continue;
-      if (!(process.env.ZAI_API_KEY ?? '').trim()) {
+    if (strategy.requiresEnv) {
+      if (!strategy.requiresEnv.value) {
         // VISIBLE skip — a missing env var on the hosting platform must
-        // never look like the reader "mysteriously" never ran.
-        attempted.push('z-ai web reader (skipped: ZAI_API_KEY not set on the server)');
+        // never look like the strategy "mysteriously" never ran.
+        attempted.push(`${strategy.name} (skipped: ${strategy.requiresEnv.name} not set on the server)`);
         continue;
       }
+    }
+    if (strategy.name === 'z-ai web reader' && opts.pageReader === false) {
+      attempted.push('z-ai web reader (skipped: disabled)');
+      continue;
     }
 
     const budget = Math.min(strategy.cap, remaining());
@@ -586,11 +831,15 @@ export async function fetchQuizletPage(
 
     const result = await strategy.run(budget);
     const usable =
-      result.ok && (result.format === 'reader-md' || result.body.includes('__NEXT_DATA__'));
+      result.ok &&
+      (result.format === 'webapi-json' ||
+        (result.format === 'reader-md' && result.body.includes('Terms in this set')) ||
+        (result.format === 'html' && result.body.includes('__NEXT_DATA__')));
     if (result.ok && usable) {
       return { payload: result.body, format: result.format ?? 'html', via: strategy.via };
     }
     lastError = result.ok ? 'response did not contain page data' : result.error;
+    if (!result.ok && result.cloudflareBlocked) anyCloudflare = true;
     errors.push(`${strategy.name}: ${lastError}`);
     if (strategy.name === 'z-ai web reader') {
       readerError = lastError;
@@ -609,9 +858,12 @@ export async function fetchQuizletPage(
 
   const detail = errors.length > 0 ? errors[errors.length - 1] : lastError;
   const readerDiag = readerError ? ` z-ai web reader: ${readerError}.` : '';
+  const cfDiag = anyCloudflare
+    ? ' At least one path reached Quizlet but was stopped by its Cloudflare bot protection — free server-side fetches are expected to fail against this.'
+    : '';
   throw new Error(
-    `Could not load the Quizlet page (tried ${attempted.join(', ')}).${readerDiag} Last error: ${detail}. ` +
-      'Quizlet may temporarily be blocking automated requests — try again in a moment, or paste the terms manually.' +
+    `Could not load the Quizlet page (tried ${attempted.join(', ')}).${readerDiag} Last error: ${detail}.${cfDiag} ` +
+      'Quizlet blocks datacenter IPs with Cloudflare, so server-side imports are best-effort: set the JINA_API_KEY env var (free key from jina.ai/reader) for the reliable browser-rendered path, retry in a moment, or paste the terms manually.' +
       (zaiBillingHint ? ` ${zaiBillingHint}` : ''),
   );
 }
@@ -642,8 +894,8 @@ function unescapeEntities(s: string): string {
     .replace(/&amp;/g, '&');
 }
 
-/** Depth-first walk of the __NEXT_DATA__ tree collecting every object that
-    has a cardSides array. JSON-in-JSON strings (double-escaped payloads) are
+/** Depth-first walk of a parsed-JSON tree collecting every object that has a
+    cardSides array. JSON-in-JSON strings (double-escaped payloads) are
     transparently parsed and re-walked.
 
     Depth only counts NESTED-JSON parses (string → object), not structural
@@ -684,30 +936,10 @@ function sideText(side: RawCardSide): string {
   return texts.join('\n');
 }
 
-/** Parse the raw SSR HTML of a Quizlet set page (payload format 'html') into
-    ordered, deduplicated term/definition pairs. Throws when the payload is
-    missing or empty. */
-export function parseQuizletHtml(html: string, canonicalUrl: string, setId: string): QuizletImportResult {
-  const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (!match) {
-    throw new Error(
-      "Couldn't find Quizlet's embedded card data — the page may be a verification wall. Try again shortly.",
-    );
-  }
-
-  let data: unknown;
-  try {
-    data = JSON.parse(match[1]);
-  } catch {
-    throw new Error('Could not parse the Quizlet page data (unexpected response).');
-  }
-
-  const rawItems: RawStudiableItem[] = [];
-  collectCards(data, rawItems);
-
-  const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/);
-  const title = titleMatch ? unescapeEntities(titleMatch[1]) : 'Quizlet set';
-
+/** Shared post-processing for raw studiableItems (any payload format):
+    filter deleted, sort by rank, extract word/definition sides, drop
+    image-only cards, dedupe exact duplicates. */
+function buildCardsFromRawItems(rawItems: RawStudiableItem[]): { cards: QuizletCard[]; skipped: number } {
   const cards: QuizletCard[] = [];
   const seen = new Set<string>();
   let skipped = 0;
@@ -735,6 +967,39 @@ export function parseQuizletHtml(html: string, canonicalUrl: string, setId: stri
       cards.push({ term, definition });
     });
 
+  return { cards, skipped };
+}
+
+/** Parse the raw SSR HTML of a Quizlet set page (payload format 'html') into
+    ordered, deduplicated term/definition pairs. Throws when the payload is
+    missing or empty. */
+export function parseQuizletHtml(html: string, canonicalUrl: string, setId: string): QuizletImportResult {
+  if (isCloudflareChallenge(html)) {
+    throw new Error(
+      "Quizlet answered with its Cloudflare 'Just a moment…' bot-check instead of the page. Try again shortly.",
+    );
+  }
+  const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!match) {
+    throw new Error(
+      "Couldn't find Quizlet's embedded card data — the page may be a verification wall. Try again shortly.",
+    );
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(match[1]);
+  } catch {
+    throw new Error('Could not parse the Quizlet page data (unexpected response).');
+  }
+
+  const rawItems: RawStudiableItem[] = [];
+  collectCards(data, rawItems);
+
+  const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/);
+  const title = titleMatch ? unescapeEntities(titleMatch[1]) : 'Quizlet set';
+
+  const { cards, skipped } = buildCardsFromRawItems(rawItems);
   if (cards.length === 0) {
     throw new Error(
       'No term/definition pairs were found on that page. Check that the set is public and contains text cards.',
@@ -744,8 +1009,32 @@ export function parseQuizletHtml(html: string, canonicalUrl: string, setId: stri
   return { title, url: canonicalUrl, setId, cards, skipped };
 }
 
-/** Parse the z.ai web reader's markdown rendering of a Quizlet set page
-    (payload format 'reader-md').
+/** Parse the 'webapi-json' payload produced by fetchViaWebapi() — a JSON
+    array string of raw studiableItems in the same shape as the
+    __NEXT_DATA__ entries (cardSides / rank / isDeleted). */
+export function parseWebapiJson(payload: string, canonicalUrl: string, setId: string): QuizletImportResult {
+  let data: unknown;
+  try {
+    data = JSON.parse(payload);
+  } catch {
+    throw new Error('Could not parse the Quizlet API response.');
+  }
+
+  const rawItems: RawStudiableItem[] = [];
+  collectCards(data, rawItems);
+
+  const { cards, skipped } = buildCardsFromRawItems(rawItems);
+  if (cards.length === 0) {
+    throw new Error(
+      'No term/definition pairs were found in the Quizlet API response. Check that the set is public and contains text cards.',
+    );
+  }
+
+  return { title: 'Quizlet set', url: canonicalUrl, setId, cards, skipped };
+}
+
+/** Parse a reader's markdown rendering of a Quizlet set page (payload format
+    'reader-md').
 
     Quizlet server-renders a "Terms in this set (N)" section whose entries
     are blank-line separated and strictly alternate term / definition, e.g.:
@@ -763,11 +1052,13 @@ export function parseQuizletHtml(html: string, canonicalUrl: string, setId: stri
     The pairs are therefore reconstructed positionally: split the section on
     blank lines (dropping image-only blocks), pair the blocks (even = term,
     odd = definition), then dedupe exact duplicates. The announced count N
-    is used to report how many cards could not be recovered as text.
-
-    Validated against the live reader output of set 1181229873: 62 announced
-    → 62 raw pairs → 61 unique (one genuine duplicate in the source set). */
+    is used to report how many cards could not be recovered as text. */
 export function parseQuizletMarkdown(markdown: string, canonicalUrl: string, setId: string): QuizletImportResult {
+  if (isCloudflareChallenge(markdown)) {
+    throw new Error(
+      "The reader received Quizlet's Cloudflare 'Just a moment…' bot-check instead of the set. Try again shortly.",
+    );
+  }
   const header = markdown.match(/Terms in this set \((\d+)\)/);
   if (!header) {
     throw new Error(
