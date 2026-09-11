@@ -2542,3 +2542,98 @@
   border-color: rgba(218, 54, 51, 0.45);
   color: #b62324;
 }
+/* --- Quizlet import progress bar — shown while the server-side fetch is
+       in flight so it's always obvious that something is happening. --- */
+.GravityImportQuizlet-progress {
+  margin-top: 0.75rem;
+}
+
+.GravityImportQuizlet-progressHeader {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.GravityImportQuizlet-progressLabel {
+  color: var(--gray-300);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.GravityImportQuizlet-progressPct {
+  color: var(--gray-400);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.GravityImportQuizlet-progressTrack {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.GravityImportQuizlet-progressFill {
+  background: linear-gradient(90deg, var(--twilight-500), var(--twilight-400));
+  border-radius: 999px;
+  height: 100%;
+  position: relative;
+  transition: width 0.25s ease-out;
+}
+
+/* Moving shimmer overlay — keeps the bar visibly "alive" even while the
+   percentage creeps slowly during long imports. */
+.GravityImportQuizlet-progressFill::after {
+  animation: GravityImportQuizletShimmer 1.2s linear infinite;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  bottom: 0;
+  content: '';
+  left: -50%;
+  position: absolute;
+  top: 0;
+  width: 50%;
+}
+
+@keyframes GravityImportQuizletShimmer {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.GravityImportQuizlet-progressHint {
+  color: var(--gray-400);
+  font-size: 0.75rem;
+  margin: 0.4rem 0 0;
+}
+
+/* --- Light-mode overrides (gold fill, same pattern as the other quizlet
+       panel elements). --- */
+[data-theme="light"] .GravityImportQuizlet-progressLabel {
+  color: #1a1a1a;
+}
+
+[data-theme="light"] .GravityImportQuizlet-progressPct {
+  color: #555;
+}
+
+[data-theme="light"] .GravityImportQuizlet-progressTrack {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .GravityImportQuizlet-progressFill {
+  background: linear-gradient(90deg, #b8952b, var(--light-gold));
+}
+
+[data-theme="light"] .GravityImportQuizlet-progressFill::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+}
+
+[data-theme="light"] .GravityImportQuizlet-progressHint {
+  color: #555;
+}
