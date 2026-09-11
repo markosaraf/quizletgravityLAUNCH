@@ -25,6 +25,21 @@ const SAMPLE = 'helio-, sun\ngeo-, earth\nbio-, life\nchrom-, color';
 const SEPARATOR_ORDER: Separator[] = ['comma', 'semicolon', 'dash'];
 const THEME_ORDER: Theme[] = ['light', 'dark'];
 
+/** Progress-bar animation: elapsed time (ms) → whole-number percentage
+ *  0–97. Exponential ease — moves fast at first (the import usually finishes
+ *  in 1–5 s) and creeps slowly later, so the bar never looks frozen during a
+ *  long retry chain. 100% is only ever shown on real completion. */
+const progressAfterMs = (elapsedMs: number): number =>
+  Math.round(Math.min(97, 100 * (1 - Math.exp(-elapsedMs / 11_000))));
+
+/** Hard client-side cap — matches the server's 60 s function budget with
+ *  headroom, so a hung request can never freeze the UI forever. */
+const IMPORT_ABORT_MS = 75_000;
+/** How often the progress bar re-renders while an import is in flight. */
+const PROGRESS_TICK_MS = 150;
+/** How long a completed (100%) bar stays on screen before hiding. */
+const PROGRESS_FADE_MS = 700;
+
 export function ImportScreen({ onStart }: Props) {
   const [tab, setTab] = useState<'paste' | 'file'>('paste');
   const [text, setText] = useState('');
@@ -71,11 +86,20 @@ export function ImportScreen({ onStart }: Props) {
   // the fetch happens server-side). On success the cards are poured into
   // the textarea as tab-separated lines so they flow through the exact
   // same parse → preview-table pipeline as pasted terms, fully editable.
+  //
+  // While the request is in flight an animated progress bar is shown — the
+  // server-side fetch can take anywhere from ~1 s (cache hit / fast path)
+  // to ~55 s (long retry chain), so without it the UI looks dead. The bar
+  // is driven by elapsed time, snaps to 100% on completion and hides again.
+  // Errors are always rendered with generic, user-facing wording — the
+  // server response itself no longer contains any internal detail either.
   const [quizletOpen, setQuizletOpen] = useState(false);
   const [quizletUrl, setQuizletUrl] = useState('');
   const [quizletBusy, setQuizletBusy] = useState(false);
   const [quizletStatus, setQuizletStatus] = useState<string | null>(null);
   const [quizletError, setQuizletError] = useState<string | null>(null);
+  /** null = idle (no bar); 0–100 while importing; 100 briefly on success. */
+  const [quizletProgress, setQuizletProgress] = useState<number | null>(null);
 
   const handleQuizletImport = useCallback(async () => {
     const link = quizletUrl.trim();
@@ -86,12 +110,23 @@ export function ImportScreen({ onStart }: Props) {
     setQuizletBusy(true);
     setQuizletError(null);
     setQuizletStatus(null);
+    setQuizletProgress(0);
+
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), IMPORT_ABORT_MS);
+    const startedAt = Date.now();
+    const ticker = setInterval(() => {
+      setQuizletProgress(progressAfterMs(Date.now() - startedAt));
+    }, PROGRESS_TICK_MS);
+
     try {
-      const res = await fetch(`/api/import-quizlet?url=${encodeURIComponent(link)}`);
+      const res = await fetch(`/api/import-quizlet?url=${encodeURIComponent(link)}`, {
+        signal: controller.signal,
+      });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          typeof data?.error === 'string' ? data.error : STRINGS.import.error_generic,
+          typeof data?.error === 'string' ? data.error : STRINGS.import.quizlet.error_generic,
         );
       }
       const cards = (data?.cards ?? []) as Array<{ term: string; definition: string }>;
@@ -110,22 +145,32 @@ export function ImportScreen({ onStart }: Props) {
         typeof data?.skipped === 'number' && data.skipped > 0
           ? format(STRINGS.import.quizlet.skipped_note, { count: data.skipped })
           : '';
-      const viaNote =
-        typeof data?.via === 'string' && data.via
-          ? format(STRINGS.import.quizlet.via_note, { via: data.via })
-          : '';
       setQuizletStatus(
         format(STRINGS.import.quizlet.success, {
           count: cards.length,
           title: typeof data?.title === 'string' ? data.title : 'Quizlet set',
-        }) +
-          skippedNote +
-          viaNote,
+        }) + skippedNote,
       );
-      setQuizletOpen(false);
+      // Flash the completed bar at 100% ("Done!"), then hide it and close
+      // the panel — the filled-in preview table below is the real
+      // confirmation.
+      setQuizletProgress(100);
+      setTimeout(() => {
+        setQuizletProgress(null);
+        setQuizletOpen(false);
+      }, PROGRESS_FADE_MS);
     } catch (err) {
-      setQuizletError(err instanceof Error ? err.message : STRINGS.import.error_generic);
+      setQuizletProgress(null);
+      setQuizletError(
+        err instanceof Error && err.name === 'AbortError'
+          ? STRINGS.import.quizlet.error_timeout
+          : err instanceof Error && typeof err.message === 'string' && err.message
+            ? err.message
+            : STRINGS.import.quizlet.error_generic,
+      );
     } finally {
+      clearInterval(ticker);
+      clearTimeout(abortTimer);
       setQuizletBusy(false);
     }
   }, [quizletUrl]);
@@ -367,6 +412,42 @@ export function ImportScreen({ onStart }: Props) {
                   </button>
                 </div>
                 <p className="GravityImportQuizlet-hint">{STRINGS.import.quizlet.hint}</p>
+
+                {/* Animated progress bar — shown from the moment Import is
+                    clicked until the request settles, so it's always obvious
+                    that something is happening during long imports. */}
+                {quizletProgress !== null ? (
+                  <div className="GravityImportQuizlet-progress" role="status" aria-live="polite">
+                    <div className="GravityImportQuizlet-progressHeader">
+                      <span className="GravityImportQuizlet-progressLabel">
+                        {quizletProgress >= 100
+                          ? STRINGS.import.quizlet.progress_done
+                          : STRINGS.import.quizlet.progress_label}
+                      </span>
+                      <span className="GravityImportQuizlet-progressPct">
+                        {quizletProgress}%
+                      </span>
+                    </div>
+                    <div
+                      className="GravityImportQuizlet-progressTrack"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(quizletProgress)}
+                    >
+                      <div
+                        className="GravityImportQuizlet-progressFill"
+                        style={{ width: `${quizletProgress}%` }}
+                      />
+                    </div>
+                    {quizletBusy ? (
+                      <p className="GravityImportQuizlet-progressHint">
+                        {STRINGS.import.quizlet.progress_hint}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {quizletStatus ? (
                   <div className="GravityImportQuizlet-status" role="status">
                     {quizletStatus}
