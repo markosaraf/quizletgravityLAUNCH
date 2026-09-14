@@ -42,42 +42,46 @@
  * challenges essentially ALL datacenter IPs (Vercel/Netlify serverless, the
  * public CORS relays, AI-reader crawlers, even Google's translate.goog):
  * requests get HTTP 403 or the "Just a moment…" JS challenge page, which no
- * plain server can solve. The challenge outcome is INTERMITTENT — the same
- * URL that is challenged now is often served seconds later (egress IP /
- * clearance rotation on the crawler pool) — so a chain of independent
- * strategies is tried in order, and the first usable payload wins:
+ * plain server can solve. The challenge outcome is PER-URL and sticky on
+ * short timescales — the same set that is challenged now is usually still
+ * challenged minutes later — so strategies fail FAST instead of retrying
+ * one URL many times, and the budget is spread across genuinely different
+ * paths (readers, relays, the Internet Archive). First usable payload wins:
  *
  *   1. r.jina.ai reader — WITH JINA_API_KEY (free tier available). Jina
  *                         renders pages with real headless browsers and
- *                         passes Cloudflare for most sites, so this is the
- *                         single most reliable server-side path. HTML first
- *                         (carries __NEXT_DATA__), markdown as fallback.
- *                         Without a key the no-auth endpoint is tried late in
- *                         the chain as a cheap hail-mary.
+ *                         passes Cloudflare for most sites. HTML first
+ *                         (carries __NEXT_DATA__). Without a key the
+ *                         no-auth endpoint is tried late in the chain.
  *   2. z.ai web reader  — official Web Reader REST API (POST {base}/reader,
- *                         docs.z.ai/api-reference/tools/web-reader). Optional:
- *                         activates when ZAI_API_KEY is set; ZAI_BASE_URL
+ *                         docs.z.ai/api-reference/tools/web-reader).
+ *                         Activates when ZAI_API_KEY is set; ZAI_BASE_URL
  *                         overrides the default https://api.z.ai/api/paas/v4.
- *                         PERSISTENT MARKDOWN-FIRST: up to THREE markdown
- *                         passes across TWO URL variants (the user's slug
- *                         path and the bare canonical), spaced 2.5s/4s apart,
- *                         then one leftover-budget 'html' attempt. Billing
- *                         caveat: the reader bills the pay-as-you-go API
- *                         wallet (GLM Coding Plan credits do NOT cover it);
- *                         on error 1113 the chain moves on quietly.
+ *                         MARKDOWN-FIRST across BOTH URL variants (the
+ *                         user's slug path and the bare canonical), with
+ *                         SHORT reader-side timeouts: an unchallenged set
+ *                         page renders in ~1 s, a challenged one burns
+ *                         10–15 s and still returns the interstitial, so
+ *                         waiting longer only wastes the chain's budget.
+ *                         Billing caveat: the reader bills the pay-as-you-go
+ *                         API wallet (GLM Coding Plan credits do NOT cover
+ *                         it); on error 1113 the chain moves on quietly.
  *   3. direct fetch     — full browser-like headers; occasionally works.
- *   4. webapi JSON      — Quizlet's internal JSON API, direct and via
- *                         allorigins (JSON payloads are smaller and slip past
- *                         crowded relays more often than 500 KB HTML pages).
- *   5. web.archive.org  — latest Wayback snapshot (both the bare /<id>/ and
- *                         the /<id>/flash-cards/ URL form — Wayback keeps
- *                         redirect captures separately, so one form can have
- *                         a real capture when the other only has a 302). The
- *                         `id_` playback modifier serves ORIGINAL bytes, so
- *                         __NEXT_DATA__ survives.
- *   6. Save-Page-Now    — if nothing is archived yet, ask Wayback to capture
+ *   4. webapi JSON      — Quizlet's internal JSON API, direct.
+ *   5. web.archive.org  — latest Wayback snapshot. Runs EARLY (before the
+ *                         mostly-dead public relays) because for older
+ *                         popular sets it is the one path that still
+ *                         delivers: Wayback keys captures by the exact
+ *                         captured URL, so the user's slug form, the bare
+ *                         canonical AND the /flash-cards form are all tried.
+ *                         The `id_` playback modifier serves ORIGINAL bytes,
+ *                         so __NEXT_DATA__ survives.
+ *   6. webapi JSON      — the same internal API via the allorigins relay
+ *                         (kept on a SHORT cap: the relay mostly answers
+ *                         5xx for quizlet.com these days).
+ *   7. Save-Page-Now    — if nothing is archived yet, ask Wayback to capture
  *                         the page now, then fetch the fresh snapshot.
- *   7. public relays    — allorigins (HTML) / jina without key / codetabs.
+ *   8. public relays    — allorigins (HTML) / jina without key / codetabs.
  *                         These relays fetch from their own IP space, so a
  *                         block on one does not imply a block on another —
  *                         but expect most of them to be challenged too.
@@ -205,18 +209,21 @@ const BROWSER_HEADERS: Record<string, string> = {
 // Per-strategy hard caps (ms). Strategies also honor the global deadline —
 // a strategy is skipped entirely when less than MIN_STRATEGY_BUDGET of the
 // budget remains, so the route can always return a proper JSON error.
-const JINA_KEYED_TIMEOUT_MS = 25_000;
-const ZAI_READER_TIMEOUT_MS = 34_000;
+// The caps are tuned so the LIVE-fetching strategies (readers) can't starve
+// the archive fallbacks: a challenged reader attempt costs ≤9 s, and
+// web.archive.org still gets its window even in the worst case.
+const JINA_KEYED_TIMEOUT_MS = 15_000;
+const ZAI_READER_TIMEOUT_MS = 26_000;
 const DIRECT_TIMEOUT_MS = 5_000;
 const WEBAPI_DIRECT_TIMEOUT_MS = 7_000;
-const WEBAPI_RELAY_TIMEOUT_MS = 14_000;
-const ALLORIGINS_TIMEOUT_MS = 12_000;
+const WEBAPI_RELAY_TIMEOUT_MS = 8_000;
+const ALLORIGINS_TIMEOUT_MS = 8_000;
 const WAYBACK_LATEST_TIMEOUT_MS = 16_000;
 const SAVE_PAGE_NOW_TIMEOUT_MS = 40_000;
 const WAYBACK_FETCH_TIMEOUT_MS = 12_000;
 const CDX_TIMEOUT_MS = 8_000;
-const JINA_FREE_TIMEOUT_MS = 8_000;
-const CODETABS_TIMEOUT_MS = 8_000;
+const JINA_FREE_TIMEOUT_MS = 6_000;
+const CODETABS_TIMEOUT_MS = 6_000;
 
 const MIN_STRATEGY_BUDGET_MS = 3_000;
 const DEFAULT_DEADLINE_MS = 55_000;
@@ -244,7 +251,16 @@ function isCloudflareChallenge(body: string): boolean {
     /<title>[^<]*Just a moment[^<]*<\/title>/i.test(body) ||
     /challenge-platform\/(?:h\/b|scripts)/i.test(body) ||
     /window\._cf_chl|window\.__cf_chl|cf_chl_opt/i.test(body) ||
-    /"firewall_manager"|Checking your browser|Attention Required!/i.test(body)
+    /"firewall_manager"|Checking your browser|Attention Required!/i.test(body) ||
+    // A reader that returns MARKDOWN strips all the HTML above and leaves
+    // only the visible copy of the interstitial: "## One more step… The
+    // security system for this website has been triggered. Completing the
+    // challenge below verifies you are a human…". Two-sentence conjunction
+    // so ordinary card text can never false-positive.
+    (/one more step/i.test(body) &&
+      /security system for this website|verifies you are a human|completing the challenge below/i.test(
+        body,
+      ))
   );
 }
 
@@ -396,6 +412,11 @@ async function zaiReaderCall(
   url: string,
   returnFormat: 'html' | 'markdown',
   budgetMs: number,
+  /** Reader-side page timeout (seconds). An unchallenged Quizlet set page
+   *  renders in ~1 s; a challenged one burns 10–15 s and STILL comes back
+   *  as the interstitial, so markdown attempts pass a short value to fail
+   *  fast instead of donating the chain's budget to a lost cause. */
+  readerTimeoutSec = 25,
 ): Promise<FetchOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), budgetMs);
@@ -409,7 +430,7 @@ async function zaiReaderCall(
       body: JSON.stringify({
         url,
         return_format: returnFormat,
-        timeout: 25, // reader-side fetch timeout, in seconds
+        timeout: readerTimeoutSec,
       }),
       redirect: 'follow',
       signal: controller.signal,
@@ -452,8 +473,13 @@ async function zaiReaderCall(
       };
     }
     // The reader happily renders Cloudflare's interstitial — detect it so the
-    // caller retries instead of treating the challenge as page content.
-    if (isCloudflareChallenge(content)) {
+    // caller retries instead of treating the challenge as page content. The
+    // reader's own `title` field is checked too: a challenged page is titled
+    // "Just a moment…" even when the markdown body itself is only a stub.
+    if (
+      isCloudflareChallenge(content) ||
+      /just a moment/i.test(json.reader_result?.title ?? '')
+    ) {
       return { ok: false, cloudflareBlocked: true, error: "reader got Cloudflare's 'Just a moment…' challenge page" };
     }
     return { ok: true, body: content };
@@ -475,16 +501,16 @@ async function zaiReaderCall(
  *   ZAI_API_KEY   (required)  key from https://z.ai/manage-apikey/apikey-list
  *   ZAI_BASE_URL  (optional)  default https://api.z.ai/api/paas/v4
  *
- * PERSISTENT MARKDOWN-FIRST STRATEGY: Quizlet's Cloudflare challenges the
- * reader's crawler INTERMITTENTLY — the same URL that returns the
- * "Just a moment…" page on one attempt is often served properly seconds
- * later (egress IP / clearance rotation). The strategy therefore makes up to
- * THREE markdown passes across the URL variants (slug path + bare
- * canonical), spaced 2.5 s / 4 s apart, before one final 'html' attempt
- * (observed to answer with empty task receipts for Quizlet pages, so it only
- * gets the leftover budget). A markdown pass that DID return a real page but
- * lacks a recognized (possibly localized) terms heading is treated as a miss
- * and the loop continues.
+ * MARKDOWN-FIRST STRATEGY across the URL variants (the user's slug path and
+ * the bare canonical URL — different variants can hit different Cloudflare
+ * outcomes on the reader's crawler pool). Reader-side timeouts are kept
+ * SHORT: an unchallenged set page renders in ~1 s, while a challenged one
+ * burns 10–15 s and still returns the interstitial, so waiting longer only
+ * donates the chain's budget to a lost cause. A markdown pass that DID
+ * return a real page but lacks a recognized (possibly localized) terms
+ * heading is treated as a miss and the loop continues; one final 'html'
+ * attempt (observed to answer with empty task receipts for Quizlet pages)
+ * only gets the leftover budget.
  *
  * Billing rejections (error 1113) abort immediately — a second paid call
  * would fail identically.
@@ -496,11 +522,30 @@ async function fetchViaZaiReader(urls: string[], budgetMs: number): Promise<Fetc
 
   const primary = urls[0];
   const secondary = urls[1] ?? urls[0];
-  const attempts: Array<{ url: string; format: 'markdown' | 'html'; delayBeforeMs: number; share: number }> = [
-    { url: primary, format: 'markdown', delayBeforeMs: 0, share: 0.28 },
-    { url: secondary, format: 'markdown', delayBeforeMs: 2_500, share: 0.28 },
-    { url: primary, format: 'markdown', delayBeforeMs: 4_000, share: 0.28 },
-    { url: primary, format: 'html', delayBeforeMs: 0, share: 0.16 },
+  // Markdown first (the only format the reader reliably fulfils for Quizlet),
+  // across the URL variants, then one cheap html attempt. Short reader-side
+  // timeouts keep a challenged chain from eating the archive strategies'
+  // budget.
+  const attempts: Array<{
+    url: string;
+    format: 'markdown' | 'html';
+    delayBeforeMs: number;
+    share: number;
+    readerTimeoutSec: number;
+  }> = [
+    { url: primary, format: 'markdown', delayBeforeMs: 0, share: 0.36, readerTimeoutSec: 8 },
+    ...(secondary !== primary
+      ? [
+          {
+            url: secondary,
+            format: 'markdown' as const,
+            delayBeforeMs: 1_500,
+            share: 0.36,
+            readerTimeoutSec: 8,
+          },
+        ]
+      : []),
+    { url: primary, format: 'html', delayBeforeMs: 1_500, share: 0.2, readerTimeoutSec: 6 },
   ];
 
   // Simple sequential accounting: spent tracks the budget consumed so far.
@@ -518,7 +563,14 @@ async function fetchViaZaiReader(urls: string[], budgetMs: number): Promise<Fetc
     if (budget < MIN_STRATEGY_BUDGET_MS || budgetMs - spent < MIN_STRATEGY_BUDGET_MS) break;
     spent += budget;
 
-    const outcome = await zaiReaderCall(endpoint, apiKey, attempt.url, attempt.format, budget);
+    const outcome = await zaiReaderCall(
+      endpoint,
+      apiKey,
+      attempt.url,
+      attempt.format,
+      budget,
+      attempt.readerTimeoutSec,
+    );
     if (outcome.ok) {
       if (attempt.format === 'markdown') {
         if (hasTermsHeader(outcome.body)) {
@@ -653,13 +705,25 @@ async function fetchViaWebapi(
  * markup rewriting so the response is byte-for-byte the page Quizlet served
  * to the crawler (including __NEXT_DATA__).
  *
- * BOTH URL forms of the set are tried (bare /<id>/ and /<id>/flash-cards/):
- * Wayback stores redirect captures separately, so the bare form can hold a
- * mere 302 record whose Location leaves the archive while the flash-cards
+ * ALL URL forms of the set are tried (the user's slug path, the bare /<id>/
+ * and /<id>/flash-cards/): Wayback keys captures by the exact captured URL
+ * and stores redirect captures separately, so the bare form can hold a mere
+ * 302 record whose Location leaves the archive while the slug or flash-cards
  * form holds the real page.
  */
-async function fetchViaWaybackLatest(pageUrl: string, budgetMs: number, waybackBase: string): Promise<FetchOutcome> {
-  const variants = [pageUrl, `${pageUrl.replace(/\/+$/, '')}/flash-cards/`];
+async function fetchViaWaybackLatest(
+  pageUrl: string,
+  budgetMs: number,
+  waybackBase: string,
+  slugUrl?: string,
+): Promise<FetchOutcome> {
+  // Wayback keys captures by the EXACT captured URL: people archive the
+  // link they shared (the slug form), redirect hops get their own entries,
+  // and the bare canonical may hold nothing but a 302. Try all three shapes
+  // (deduped — a slug usually already ends in /flash-cards/).
+  const variants = [slugUrl, pageUrl, `${pageUrl.replace(/\/+$/, '')}/flash-cards/`].filter(
+    (v, i, arr): v is string => Boolean(v) && arr.indexOf(v) === i,
+  );
   let last: FetchOutcome = { ok: false, error: 'not attempted' };
   for (let i = 0; i < variants.length; i++) {
     const remaining = budgetMs - (i * budgetMs) / variants.length;
@@ -827,16 +891,19 @@ export async function fetchQuizletPage(
       run: (budget) => fetchViaWebapi(setId, 'direct', budget),
     },
     {
+      // Runs BEFORE the public relays: for older popular sets the archive is
+      // the one path that still delivers, and it must not be starved of
+      // budget by strategies that only ever fail for these sets.
+      name: 'web.archive.org snapshot',
+      via: 'web.archive.org snapshot',
+      cap: WAYBACK_LATEST_TIMEOUT_MS,
+      run: (budget) => fetchViaWaybackLatest(canonicalUrl, budget, waybackBase, readerUrls[0]),
+    },
+    {
       name: 'quizlet webapi (allorigins relay)',
       via: 'quizlet webapi (allorigins relay)',
       cap: WEBAPI_RELAY_TIMEOUT_MS,
       run: (budget) => fetchViaWebapi(setId, 'allorigins', budget),
-    },
-    {
-      name: 'web.archive.org snapshot',
-      via: 'web.archive.org snapshot',
-      cap: WAYBACK_LATEST_TIMEOUT_MS,
-      run: (budget) => fetchViaWaybackLatest(canonicalUrl, budget, waybackBase),
     },
     {
       name: 'web.archive.org Save-Page-Now',
@@ -903,13 +970,18 @@ export async function fetchQuizletPage(
     attempted.push(strategy.name);
 
     const result = await strategy.run(budget);
+    // Plain-fetch strategies (direct fetch, Wayback, the public relays) don't
+    // tag a format — their payload is HTML by definition. Resolve the tag
+    // BEFORE the usability check, otherwise valid __NEXT_DATA__ pages they
+    // deliver would be discarded and the strategy reported as failed.
+    const format: QuizletPayloadFormat = result.ok ? (result.format ?? 'html') : 'html';
     const usable =
       result.ok &&
-      (result.format === 'webapi-json' ||
-        (result.format === 'reader-md' && hasTermsHeader(result.body)) ||
-        (result.format === 'html' && result.body.includes('__NEXT_DATA__')));
+      (format === 'webapi-json' ||
+        (format === 'reader-md' && hasTermsHeader(result.body)) ||
+        (format === 'html' && result.body.includes('__NEXT_DATA__')));
     if (result.ok && usable) {
-      return { payload: result.body, format: result.format ?? 'html', via: strategy.via };
+      return { payload: result.body, format, via: strategy.via };
     }
     lastError = result.ok ? 'response did not contain page data' : result.error;
     if (!result.ok && result.cloudflareBlocked) anyCloudflare = true;
