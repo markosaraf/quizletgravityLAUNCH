@@ -117,7 +117,7 @@ export const STRINGS = {
       url_placeholder: 'https://quizlet.com/…/flash-cards/',
       fetch_button: 'Import',
       fetching: 'Importing…',
-      hint: 'Paste the link of a public Quizlet set — the terms and definitions are fetched and filled into the table below, where you can edit them.',
+      hint: 'Paste the link of a public Quizlet set — the terms and definitions are fetched and filled into the table below, where you can edit them. If Quizlet’s protection blocks the automatic fetch, an in-browser import opens automatically.',
       success: 'Imported {count} terms from “{title}”.',
       skipped_note: ' {count} card(s) skipped (no text on the definition side).',
       error_no_url: 'Paste a Quizlet set link first.',
@@ -127,6 +127,32 @@ export const STRINGS = {
       progress_label: 'Fetching your set from Quizlet…',
       progress_done: 'Done!',
       progress_hint: 'This usually takes a few seconds — large sets can take up to a minute.',
+      browser: {
+        panel_title: 'Import in your browser — always gets through',
+        panel_note:
+          'Quizlet’s anti-bot wall can block our server from fetching the set. Your own browser passes that wall — let it load the page and hand the set over:',
+        open_button: 'Open the set in a new tab',
+        open_hint: 'If Quizlet shows a “one more step” page, solve it — then the set loads like normal.',
+        step1: 'Open the set in a new tab (button above) and solve the check if one appears.',
+        step2: 'Select the whole page (Ctrl+A) and copy it (Ctrl+C).',
+        step3: 'Come back to this tab and paste (Ctrl+V) into the box below — the terms load automatically.',
+        paste_zone_label: 'Paste the copied Quizlet page here',
+        paste_zone_placeholder: 'Click here, then press Ctrl+V (⌘V)…',
+        parse_button: 'Load pasted terms',
+        bookmarklet_label:
+          'One-click alternative: drag this button to your bookmarks bar. While on the Quizlet set page, click it — it scrapes the set and brings you straight back here.',
+        bookmarklet_link: '⬆ Import to Gravity',
+        bookmarklet_hint: '(one-time setup, works for every future set)',
+        server_retry_note:
+          'The automatic server fetch is still running in the background — if it gets through, the table fills by itself.',
+        detected: 'Found {count} term/definition pairs — loaded into the table below.',
+        parse_fail:
+          'No term/definition pairs found in what you pasted. Make sure you copied the Quizlet SET page (after solving any “one more step” check) — or type the terms manually into the table below.',
+        open_no_url:
+          'Paste a Quizlet set link in the field above first — the button needs to know which set to open.',
+        popup_blocked:
+          'Your browser blocked the new tab. Allow pop-ups for this site, or copy the set link into a new tab yourself.',
+      },
     },
     theme_selector: {
       label: 'Theme',
