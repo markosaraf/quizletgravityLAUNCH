@@ -44,7 +44,11 @@ export async function GET(request: NextRequest) {
   const canonical = `https://quizlet.com/${setId}/`;
 
   try {
-    const { payload, format } = await fetchQuizletPage(canonical);
+    // The user's FULL link is passed along (originalUrl): its slug path
+    // (same host, query/hash stripped) is tried FIRST by the reader
+    // strategies — it skips one redirect hop and pins the locale the user
+    // actually saw — and is also probed as its own Wayback capture key.
+    const { payload, format } = await fetchQuizletPage(canonical, { originalUrl: setUrl });
     const result =
       format === "reader-md"
         ? parseQuizletMarkdown(payload, canonical, setId)
