@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ClipboardEvent as ReactClipboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   loadImportedSet,
   loadStoredSeparator,
@@ -14,14 +13,6 @@ import {
   saveStoredTheme,
 } from '@/lib/gravity/parse';
 import type { Separator, Theme } from '@/lib/gravity/parse';
-import {
-  buildBookmarkletHref,
-  extractQuizletSetIdClient,
-  isBrowserImportMessage,
-  isQuizletOrigin,
-  parseQuizletClipboardHtml,
-  parseQuizletClipboardText,
-} from '@/lib/gravity/browserImport';
 import { STRINGS, format } from '@/lib/gravity/strings';
 import type { GravitySet, GravityTerm } from '@/lib/gravity/types';
 
@@ -48,40 +39,6 @@ const IMPORT_ABORT_MS = 75_000;
 const PROGRESS_TICK_MS = 150;
 /** How long a completed (100%) bar stays on screen before hiding. */
 const PROGRESS_FADE_MS = 700;
-
-/* ── Server-fetch-blocked memory ────────────────────────────────────────
- * Quizlet's Cloudflare wall is sticky on short timescales: when the server
- * chain failed once, it will almost certainly fail again for the next few
- * minutes. After a failure we remember it for 2 h (per tab session) and the
- * next import skips straight to the in-browser flow — while STILL retrying
- * the server quietly in the background, so a set that became reachable
- * (cache, Wayback) fills the table by itself. */
-const SERVER_BLOCK_KEY = 'qgServerFetchBlockedUntil';
-const SERVER_BLOCK_MS = 2 * 60 * 60 * 1000;
-
-function isServerFetchBlocked(): boolean {
-  try {
-    return Date.now() < Number(sessionStorage.getItem(SERVER_BLOCK_KEY) || 0);
-  } catch {
-    return false;
-  }
-}
-
-function markServerFetchBlocked(): void {
-  try {
-    sessionStorage.setItem(SERVER_BLOCK_KEY, String(Date.now() + SERVER_BLOCK_MS));
-  } catch {
-    /* private mode etc. — flow still works, just without the fast path */
-  }
-}
-
-function markServerFetchOk(): void {
-  try {
-    sessionStorage.removeItem(SERVER_BLOCK_KEY);
-  } catch {
-    /* ignore */
-  }
-}
 
 export function ImportScreen({ onStart }: Props) {
   const [tab, setTab] = useState<'paste' | 'file'>('paste');
@@ -123,26 +80,19 @@ export function ImportScreen({ onStart }: Props) {
     }
   }, []);
 
-  // Quizlet set import — two ways in:
+  // Quizlet set import — one-click fetch of a public Quizlet set's terms &
+  // definitions through the site's own /api/import-quizlet route (browsers
+  // can't request quizlet.com directly: Quizlet sends no CORS headers, so
+  // the fetch happens server-side). On success the cards are poured into
+  // the textarea as tab-separated lines so they flow through the exact
+  // same parse → preview-table pipeline as pasted terms, fully editable.
   //
-  // 1) The classic one-click server fetch through /api/import-quizlet (the
-  //    readers/relays/Wayback chain). Quizlet's Cloudflare wall blocks
-  //    datacenter IPs, so this is now only the FAST PATH: when it works, the
-  //    table fills itself.
-  //
-  // 2) The in-browser import ("Import in your browser"): the user's own
-  //    browser opens the Quizlet set, solves any "one more step" check, and
-  //    hands the data back — either via copy & paste (paste zone below,
-  //    parses the clipboard's text/html copy of the term DOM) or via the
-  //    draggable bookmarklet, which scrapes the set INSIDE the quizlet.com
-  //    tab and posts it back through window.opener.postMessage. This path
-  //    always gets through, because Quizlet never challenges a real user's
-  //    real browser session.
-  //
-  // While a server request is in flight an animated progress bar is shown;
-  // in-browser mode replaces it with a step list + paste zone. All paths
-  // pour the cards into the textarea as tab-separated lines so they flow
-  // through the exact same parse → preview-table pipeline, fully editable.
+  // While the request is in flight an animated progress bar is shown — the
+  // server-side fetch can take anywhere from ~1 s (cache hit / fast path)
+  // to ~55 s (long retry chain), so without it the UI looks dead. The bar
+  // is driven by elapsed time, snaps to 100% on completion and hides again.
+  // Errors are always rendered with generic, user-facing wording — the
+  // server response itself no longer contains any internal detail either.
   const [quizletOpen, setQuizletOpen] = useState(false);
   const [quizletUrl, setQuizletUrl] = useState('');
   const [quizletBusy, setQuizletBusy] = useState(false);
@@ -151,93 +101,23 @@ export function ImportScreen({ onStart }: Props) {
   /** null = idle (no bar); 0–100 while importing; 100 briefly on success. */
   const [quizletProgress, setQuizletProgress] = useState<number | null>(null);
 
-  // In-browser import panel state.
-  const [browserOpen, setBrowserOpen] = useState(false);
-  /** Raw content of the paste zone (only filled when auto-parse failed). */
-  const [pasteZone, setPasteZone] = useState('');
-  /** Inline feedback inside the browser panel (detected N pairs / parse fail / …). */
-  const [browserMsg, setBrowserMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  /** Background server retry status while the browser panel is open. */
-  const [serverRetry, setServerRetry] = useState<'idle' | 'running'>('idle');
-  /** Handle of the Quizlet tab we opened — kept WITHOUT `noopener` so the
-   *  bookmarklet can reach this tab back via window.opener.postMessage. */
-  const popupRef = useRef<Window | null>(null);
-  /** AbortController of the in-flight server fetch (aborted when the
-   *  browser import lands first, so a late server answer can't overwrite
-   *  the fresher in-browser result). */
-  const quizletAbortRef = useRef<AbortController | null>(null);
-  const bookmarkletRef = useRef<HTMLAnchorElement | null>(null);
-
-  useEffect(
-    () => () => {
-      // unmount: stop any in-flight background import
-      quizletAbortRef.current?.abort();
-    },
-    [],
-  );
-
-  /** Shared landing pad for cards from ALL import paths (server fetch,
-   *  clipboard paste, bookmarklet postMessage). Tab-separated on purpose:
-   *  the paste parser always tries tab FIRST (see splitPastedLine), so pairs
-   *  split correctly no matter which separator is selected — and commas
-   *  inside terms/definitions ("le client, la cliente") stay safe. */
-  const applyCards = useCallback(
-    (cards: Array<{ term: string; definition: string }>, title: string, skipped: number) => {
-      quizletAbortRef.current?.abort();
-      quizletAbortRef.current = null;
-      setText(cards.map((c) => `${c.term}\t${c.definition}`).join('\n'));
-      // Reuse the existing "file name" slot so the Quizlet set title becomes
-      // the study-set title on Start.
-      setFileName(title || 'Quizlet set');
-      setTab('paste');
-      setError(null);
-      const skippedNote =
-        skipped > 0 ? format(STRINGS.import.quizlet.skipped_note, { count: skipped }) : '';
-      setQuizletStatus(
-        format(STRINGS.import.quizlet.success, {
-          count: cards.length,
-          title: title || 'Quizlet set',
-        }) + skippedNote,
-      );
-      setBrowserOpen(false);
-      setServerRetry('idle');
-      setBrowserMsg(null);
-    },
-    [],
-  );
-
   const handleQuizletImport = useCallback(async () => {
     const link = quizletUrl.trim();
     if (!link) {
       setQuizletError(STRINGS.import.quizlet.error_no_url);
       return;
     }
+    setQuizletBusy(true);
     setQuizletError(null);
     setQuizletStatus(null);
-    setBrowserMsg(null);
-    setPasteZone('');
+    setQuizletProgress(0);
 
-    const previouslyBlocked = isServerFetchBlocked();
     const controller = new AbortController();
-    quizletAbortRef.current = controller;
     const abortTimer = setTimeout(() => controller.abort(), IMPORT_ABORT_MS);
-
-    // Fast path (Quizlet blocked us recently): open the in-browser panel
-    // IMMEDIATELY and retry the server silently in the background.
-    let ticker: ReturnType<typeof setInterval> | null = null;
-    if (previouslyBlocked) {
-      setQuizletProgress(null);
-      setQuizletBusy(true);
-      setBrowserOpen(true);
-      setServerRetry('running');
-    } else {
-      setQuizletBusy(true);
-      setQuizletProgress(0);
-      const startedAt = Date.now();
-      ticker = setInterval(() => {
-        setQuizletProgress(progressAfterMs(Date.now() - startedAt));
-      }, PROGRESS_TICK_MS);
-    }
+    const startedAt = Date.now();
+    const ticker = setInterval(() => {
+      setQuizletProgress(progressAfterMs(Date.now() - startedAt));
+    }, PROGRESS_TICK_MS);
 
     try {
       const res = await fetch(`/api/import-quizlet?url=${encodeURIComponent(link)}`, {
@@ -251,166 +131,49 @@ export function ImportScreen({ onStart }: Props) {
       }
       const cards = (data?.cards ?? []) as Array<{ term: string; definition: string }>;
       if (cards.length < 2) throw new Error(STRINGS.import.error_single);
-      markServerFetchOk();
-      const title = typeof data?.title === 'string' ? data.title : 'Quizlet set';
-      const skipped = typeof data?.skipped === 'number' ? data.skipped : 0;
-      if (previouslyBlocked) {
-        // Quiet background retry won — pour the set in and close the panel.
-        applyCards(cards, title, skipped);
-      } else {
-        applyCards(cards, title, skipped);
-        // Flash the completed bar at 100% ("Done!"), then hide it and close
-        // the panel — the filled-in preview table below is the real
-        // confirmation.
-        setQuizletProgress(100);
-        setTimeout(() => {
-          setQuizletProgress(null);
-          setQuizletOpen(false);
-        }, PROGRESS_FADE_MS);
-      }
-    } catch (err) {
-      markServerFetchBlocked();
-      if (previouslyBlocked) {
-        // Silent background retry failed — stay in the in-browser flow
-        // without nagging; the panel is already on screen.
-        setServerRetry('idle');
-      } else {
+      // Tab-separated on purpose: the paste parser always tries tab FIRST
+      // (see splitPastedLine), so pairs split correctly no matter which
+      // separator is selected — and commas inside terms/definitions
+      // ("le client, la cliente") stay safe.
+      setText(cards.map((c) => `${c.term}\t${c.definition}`).join('\n'));
+      // Reuse the existing "file name" slot so the Quizlet set title becomes
+      // the study-set title on Start.
+      setFileName(typeof data?.title === 'string' ? data.title : 'Quizlet set');
+      setTab('paste');
+      setError(null);
+      const skippedNote =
+        typeof data?.skipped === 'number' && data.skipped > 0
+          ? format(STRINGS.import.quizlet.skipped_note, { count: data.skipped })
+          : '';
+      setQuizletStatus(
+        format(STRINGS.import.quizlet.success, {
+          count: cards.length,
+          title: typeof data?.title === 'string' ? data.title : 'Quizlet set',
+        }) + skippedNote,
+      );
+      // Flash the completed bar at 100% ("Done!"), then hide it and close
+      // the panel — the filled-in preview table below is the real
+      // confirmation.
+      setQuizletProgress(100);
+      setTimeout(() => {
         setQuizletProgress(null);
-        // First-class fallback: open the in-browser import automatically.
-        setBrowserOpen(true);
-        setQuizletError(
-          err instanceof Error && err.name === 'AbortError'
-            ? STRINGS.import.quizlet.error_timeout
-            : err instanceof Error && typeof err.message === 'string' && err.message
-              ? err.message
-              : STRINGS.import.quizlet.error_generic,
-        );
-      }
+        setQuizletOpen(false);
+      }, PROGRESS_FADE_MS);
+    } catch (err) {
+      setQuizletProgress(null);
+      setQuizletError(
+        err instanceof Error && err.name === 'AbortError'
+          ? STRINGS.import.quizlet.error_timeout
+          : err instanceof Error && typeof err.message === 'string' && err.message
+            ? err.message
+            : STRINGS.import.quizlet.error_generic,
+      );
     } finally {
-      if (ticker) clearInterval(ticker);
+      clearInterval(ticker);
       clearTimeout(abortTimer);
       setQuizletBusy(false);
     }
-  }, [quizletUrl, applyCards]);
-
-  /* ── In-browser import (Path A: copy & paste) ────────────────────────── */
-
-  const quizletSetId = useMemo(() => extractQuizletSetIdClient(quizletUrl), [quizletUrl]);
-
-  const handleOpenQuizletTab = useCallback(() => {
-    if (!quizletSetId) {
-      setBrowserMsg({ ok: false, text: STRINGS.import.quizlet.browser.open_no_url });
-      return;
-    }
-    setBrowserMsg(null);
-    // Deliberately WITHOUT features='noopener': the bookmarklet needs
-    // window.opener to postMessage the scraped set back into this tab.
-    const win = window.open(`https://quizlet.com/${quizletSetId}/`, '_blank');
-    if (!win) {
-      setBrowserMsg({ ok: false, text: STRINGS.import.quizlet.browser.popup_blocked });
-      return;
-    }
-    popupRef.current = win;
-  }, [quizletSetId]);
-
-  /** paste event on the paste zone: the clipboard usually carries text/html
-   *  (a DOM slice with Quizlet's .TermText classes) — parse it live; plain
-   *  text is the fallback. On success the zone stays empty; on failure the
-   *  raw text is kept visible so "Load pasted terms" can retry. */
-  const handlePasteZonePaste = useCallback(
-    (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
-      const html = e.clipboardData.getData('text/html');
-      const plain = e.clipboardData.getData('text/plain');
-      const result =
-        (html ? parseQuizletClipboardHtml(html) : null) ??
-        (plain ? parseQuizletClipboardText(plain) : null);
-      if (result && result.cards.length >= 2) {
-        e.preventDefault();
-        setPasteZone('');
-        setBrowserMsg({
-          ok: true,
-          text:
-            format(STRINGS.import.quizlet.browser.detected, { count: result.cards.length }) +
-            (result.skipped > 0
-              ? format(STRINGS.import.quizlet.skipped_note, { count: result.skipped })
-              : ''),
-        });
-        applyCards(result.cards, result.title, result.skipped);
-        return;
-      }
-      if (plain) {
-        e.preventDefault();
-        setPasteZone(plain);
-        setBrowserMsg({ ok: false, text: STRINGS.import.quizlet.browser.parse_fail });
-        return;
-      }
-      // Nothing readable — let the default paste happen.
-    },
-    [applyCards],
-  );
-
-  /** Manual retry on whatever sits in the paste zone (context-menu pastes on
-   *  some mobile browsers never fire a paste event). */
-  const handleParsePasted = useCallback(() => {
-    const result = parseQuizletClipboardText(pasteZone);
-    if (result && result.cards.length >= 2) {
-      setPasteZone('');
-      setBrowserMsg({
-        ok: true,
-        text: format(STRINGS.import.quizlet.browser.detected, { count: result.cards.length }),
-      });
-      applyCards(result.cards, result.title, result.skipped);
-    } else {
-      setBrowserMsg({ ok: false, text: STRINGS.import.quizlet.browser.parse_fail });
-    }
-  }, [pasteZone, applyCards]);
-
-  /* ── In-browser import (Path B: bookmarklet postMessage) ─────────────── */
-
-  // The bookmarklet (running INSIDE the quizlet.com tab) posts
-  // { source, type, title, cards, skipped } to this tab via
-  // window.opener.postMessage. Accept messages from Quizlet origins only —
-  // anything else is ignored before even looking at the payload.
-  useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      if (!isQuizletOrigin(e.origin)) return;
-      if (!isBrowserImportMessage(e.data)) return;
-      const { title, cards, skipped } = e.data;
-      if (!Array.isArray(cards) || cards.length < 2) {
-        setBrowserMsg({ ok: false, text: STRINGS.import.quizlet.browser.parse_fail });
-        return;
-      }
-      applyCards(
-        cards.filter(
-          (c) => c && typeof c.term === 'string' && typeof c.definition === 'string',
-        ),
-        typeof title === 'string' ? title : '',
-        typeof skipped === 'number' ? skipped : 0,
-      );
-      // Close the Quizlet tab that handed us the set (WindowProxy.close()
-      // is allowed cross-origin for script-opened tabs).
-      try {
-        (e.source as WindowProxy | null)?.close?.();
-      } catch {
-        /* ignore */
-      }
-      popupRef.current = null;
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [applyCards]);
-
-  // The bookmarklet link is a javascript: URL built for THIS origin. It is
-  // assigned via setAttribute (not JSX) so React never has to render — or
-  // sanitize-warn about — a javascript: href. Recomputed whenever the panel
-  // opens, so localhost/preview deployments build their own variant.
-  useEffect(() => {
-    if (!browserOpen) return;
-    const a = bookmarkletRef.current;
-    if (a && typeof window !== 'undefined') {
-      a.setAttribute('href', buildBookmarkletHref(window.location.origin));
-    }
-  }, [browserOpen]);
+  }, [quizletUrl]);
 
   /**
    * Editable terms table.
@@ -612,9 +375,7 @@ export function ImportScreen({ onStart }: Props) {
             </div>
 
             {/* Quizlet import panel — URL input + fetch; terms land in the
-                same preview table used by paste/CSV. If the server chain is
-                blocked by Quizlet's Cloudflare wall, the in-browser import
-                panel opens underneath automatically. */}
+                same preview table used by paste/CSV. */}
             {quizletOpen ? (
               <div className="GravityImportQuizlet" id="quizlet-import-panel">
                 <div className="GravityImportQuizlet-row">
@@ -653,8 +414,8 @@ export function ImportScreen({ onStart }: Props) {
                 <p className="GravityImportQuizlet-hint">{STRINGS.import.quizlet.hint}</p>
 
                 {/* Animated progress bar — shown from the moment Import is
-                    clicked until the request settles (fast path only; the
-                    in-browser panel replaces it when Quizlet blocks us). */}
+                    clicked until the request settles, so it's always obvious
+                    that something is happening during long imports. */}
                 {quizletProgress !== null ? (
                   <div className="GravityImportQuizlet-progress" role="status" aria-live="polite">
                     <div className="GravityImportQuizlet-progressHeader">
@@ -695,114 +456,6 @@ export function ImportScreen({ onStart }: Props) {
                 {quizletError ? (
                   <div className="GravityImportQuizlet-error" role="alert">
                     {quizletError}
-                  </div>
-                ) : null}
-
-                {/* ── In-browser import panel ── */}
-                {browserOpen ? (
-                  <div className="GravityImportQuizlet-browser">
-                    <div className="GravityImportQuizlet-browserHead">
-                      <span className="GravityImportQuizlet-browserTitle">
-                        {STRINGS.import.quizlet.browser.panel_title}
-                      </span>
-                      <button
-                        type="button"
-                        className="GravityImportQuizlet-browserHide"
-                        onClick={() => setBrowserOpen(false)}
-                        aria-label="Hide browser import"
-                        title="Hide browser import"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <p className="GravityImportQuizlet-browserNote">
-                      {STRINGS.import.quizlet.browser.panel_note}
-                    </p>
-                    {serverRetry === 'running' ? (
-                      <p className="GravityImportQuizlet-browserRetry">
-                        {STRINGS.import.quizlet.browser.server_retry_note}
-                      </p>
-                    ) : null}
-
-                    <ol className="GravityImportQuizlet-steps">
-                      <li>{STRINGS.import.quizlet.browser.step1}</li>
-                      <li>{STRINGS.import.quizlet.browser.step2}</li>
-                      <li>{STRINGS.import.quizlet.browser.step3}</li>
-                    </ol>
-
-                    <div className="GravityImportQuizlet-browserRow">
-                      <button
-                        type="button"
-                        className="GravityImportQuizlet-openBtn"
-                        onClick={handleOpenQuizletTab}
-                      >
-                        {STRINGS.import.quizlet.browser.open_button}
-                      </button>
-                      {!quizletSetId ? (
-                        <span className="GravityImportQuizlet-browserWarn">
-                          {STRINGS.import.quizlet.browser.open_no_url}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="GravityImportQuizlet-openHint">
-                      {STRINGS.import.quizlet.browser.open_hint}
-                    </p>
-
-                    <label className="GravityImportQuizlet-pasteLabel" htmlFor="quizlet-paste-zone">
-                      {STRINGS.import.quizlet.browser.paste_zone_label}
-                    </label>
-                    <textarea
-                      id="quizlet-paste-zone"
-                      className="GravityImportQuizlet-pasteZone"
-                      value={pasteZone}
-                      placeholder={STRINGS.import.quizlet.browser.paste_zone_placeholder}
-                      onPaste={handlePasteZonePaste}
-                      onChange={(e) => setPasteZone(e.target.value)}
-                      rows={3}
-                    />
-                    <div className="GravityImportQuizlet-browserRow">
-                      <button
-                        type="button"
-                        className="GravityImportQuizlet-fetch"
-                        onClick={handleParsePasted}
-                        disabled={pasteZone.trim() === ''}
-                      >
-                        {STRINGS.import.quizlet.browser.parse_button}
-                      </button>
-                    </div>
-
-                    <div className="GravityImportQuizlet-bookmarklet">
-                      <p className="GravityImportQuizlet-browserNote">
-                        {STRINGS.import.quizlet.browser.bookmarklet_label}
-                      </p>
-                      <div className="GravityImportQuizlet-browserRow">
-                        <a
-                          ref={bookmarkletRef}
-                          draggable
-                          className="GravityImportQuizlet-bookmarkletLink"
-                          title={STRINGS.import.quizlet.browser.bookmarklet_label}
-                          onClick={(e) => e.preventDefault()}
-                        >
-                          {STRINGS.import.quizlet.browser.bookmarklet_link}
-                        </a>
-                        <span className="GravityImportQuizlet-bookmarkletHint">
-                          {STRINGS.import.quizlet.browser.bookmarklet_hint}
-                        </span>
-                      </div>
-                    </div>
-
-                    {browserMsg ? (
-                      <div
-                        className={
-                          browserMsg.ok
-                            ? 'GravityImportQuizlet-status'
-                            : 'GravityImportQuizlet-error'
-                        }
-                        role={browserMsg.ok ? 'status' : 'alert'}
-                      >
-                        {browserMsg.text}
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
