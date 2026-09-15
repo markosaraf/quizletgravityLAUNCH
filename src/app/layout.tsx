@@ -30,30 +30,40 @@ const DESC_SHORT =
    change. Update DATE_MODIFIED whenever you change on-page content.
 ---------------------------------------------------------------------------- */
 const DATE_PUBLISHED = "2026-09-04"; // first commit / site launch
-const DATE_MODIFIED = "2026-09-15";  // OG image fix: single og:image only
+const DATE_MODIFIED = "2026-09-15";  // square image moved to JSON-LD-only
 
 /* ----------------------------------------------------------------------------
-   OG IMAGE — exactly ONE image per response, chosen by crawler.
+   OG IMAGES — TWO-CHANNEL STRATEGY. Read this before touching anything.
 
-   LinkedInBot  → /og-image-linkedin.png
-   Everything else (Discord, WhatsApp, Twitter/X, Facebook, Slack, iMessage,
-   Telegram, Google, AI crawlers, …) → /og-image.png
+   CHANNEL 1 — meta tags (og:image / twitter:image):
+     Read by Discord, WhatsApp, Twitter/X, Facebook, Slack, Telegram,
+     iMessage, etc. Emits exactly ONE og:image tag:
+       • LinkedInBot        → /og-image-linkedin.png
+       • everything else    → /og-image.png  (1200×630)
+     ⚠️ DO NOT add /og-image-square.png (or any 2nd image) to
+     openGraph.images. With multiple og:image meta tags every platform
+     picks its own — Discord uses the LAST tag, which is exactly how the
+     square leaked into Discord previews before. One tag = deterministic
+     result everywhere. Social scrapers never read JSON-LD, so the square
+     can NEVER leak back into social previews via Channel 2.
 
-   ⚠️ DO NOT add a second entry to openGraph.images. When several
-   og:image meta tags are present, every platform picks its own:
-   Discord & several scrapers use the LAST og:image tag (which is why
-   /og-image-square.png kept showing up in Discord previews), WhatsApp
-   and Facebook use the first, Twitter falls back differently — the only
-   deterministic result is: exactly ONE og:image tag = every platform
-   shows the same image.
-
-   /og-image-square.png and /og-image2.png are intentionally NOT
-   referenced anywhere in metadata anymore. They can stay in /public
-   (nothing links to them) or be deleted — they will no longer appear
-   in any link preview either way.
+   CHANNEL 2 — JSON-LD structured data (below, in RootLayout):
+     Read by Google Search / rich results / knowledge graph. This is where
+     /og-image-square.png (1200×1200) is declared, via:
+       • VideoGame.image        → [og-image, og-image-square]  (Google
+         recommends repeating `image` for multiple aspect ratios)
+       • VideoGame.thumbnailUrl → og-image-square  (the designated
+         search-results thumbnail)
+       • WebPage.thumbnailUrl   → og-image-square  (same hint for the
+         homepage node)
+     Google is not 100% guaranteed to use it (it sometimes generates its
+     own screenshots), but thumbnailUrl + the 1:1 image + robots
+     max-image-preview:large (already set in generateMetadata) is the
+     strongest hint combination you can legally give it.
 ---------------------------------------------------------------------------- */
 const OG_IMAGE_DEFAULT = "/og-image.png";
 const OG_IMAGE_LINKEDIN = "/og-image-linkedin.png";
+const OG_IMAGE_SQUARE = "/og-image-square.png";
 
 function isLinkedInCrawler(userAgent: string): boolean {
   // LinkedIn's official crawler announces itself with "LinkedInBot".
@@ -62,7 +72,8 @@ function isLinkedInCrawler(userAgent: string): boolean {
 }
 
 /* ----------------------------------------------------------------------------
-   generateMetadata() — single og:image for all non-LinkedIn crawlers.
+   generateMetadata() — CHANNEL 1 ONLY.
+   Single og:image for all non-LinkedIn crawlers. No square here, ever.
 ---------------------------------------------------------------------------- */
 export async function generateMetadata(): Promise<Metadata> {
   const headersList = await headers();
@@ -71,7 +82,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const ogImage = isLinkedIn ? OG_IMAGE_LINKEDIN : OG_IMAGE_DEFAULT;
 
-  // ONE image only — no square thumbnail pushed anymore.
+  // ONE image only — the square is served to Google via JSON-LD instead.
   const ogImages: NonNullable<NonNullable<Metadata["openGraph"]>["images"]> = [
     {
       url: ogImage,
@@ -114,6 +125,8 @@ export async function generateMetadata(): Promise<Metadata> {
       googleBot: {
         index: true,
         follow: true,
+        // "large" lets Google show a LARGE image preview in search results
+        // (required companion to the JSON-LD square thumbnail below).
         "max-image-preview": "large",
         "max-snippet": -1,
         "max-video-preview": -1,
@@ -149,12 +162,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /* ----------------------------------------------------------------------------
-   JSON-LD structured data — same single-image rule applies here.
-   We re-detect the LinkedIn crawler inside the component (since
-   generateMetadata and the component body run in separate contexts).
-   LinkedInBot gets og-image-linkedin.png; every other crawler (including
-   Googlebot, which previously received the square image via VideoGame.image
-   / thumbnailUrl) now receives og-image.png.
+   JSON-LD structured data — CHANNEL 2 (Google Search / rich results).
+
+   This is where the square image lives now. We re-detect the LinkedIn
+   crawler inside the component (since generateMetadata and the component
+   body run in separate contexts) — it only affects which NON-square
+   variant joins the VideoGame.image array; the square is always present
+   for Google.
 
    2026 schema upgrade — the @graph now contains:
      1. WebSite      — the site itself (publisher-linked, no fake SearchAction)
@@ -163,9 +177,15 @@ export async function generateMetadata(): Promise<Metadata> {
      3. Person       — the author (E-E-A-T signal for Google + AI engines)
      4. VideoGame    — the game entity, now with playMode, numberOfPlayers,
                        featureList, inLanguage, isAccessibleForFree,
-                       datePublished/dateModified, keywords, sameAs
+                       datePublished/dateModified, keywords, sameAs.
+                       image = [wide, square] (Google's docs recommend
+                       repeating `image` for multiple aspect ratios — 1:1
+                       is ideal for search thumbnails), thumbnailUrl =
+                       the square.
      5. WebPage      — the homepage as a distinct node (isPartOf #website),
-                       with dates and primaryImageOfPage
+                       with dates, primaryImageOfPage (wide) and
+                       thumbnailUrl (square — the search-result thumbnail
+                       hint for the homepage itself).
 
    All nodes are interlinked via @id, which is how search engines and LLM
    knowledge graphs stitch the entities together. FAQPage and HowTo live
@@ -180,9 +200,9 @@ export default async function RootLayout({
   const userAgent = headersList.get("user-agent") ?? "";
   const isLinkedIn = isLinkedInCrawler(userAgent);
 
-  // Single image everywhere: LinkedIn variant for LinkedInBot, otherwise
-  // the default og-image.png. (Previously this served og-image-square.png
-  // to Googlebot via VideoGame.image / thumbnailUrl.)
+  // Wide image: LinkedIn variant for LinkedInBot, default for everyone
+  // else (incl. Googlebot). The square joins via VideoGame/WebPage
+  // thumbnailUrl below — Google-only channels.
   const ogImage = isLinkedIn ? OG_IMAGE_LINKEDIN : OG_IMAGE_DEFAULT;
 
   const jsonLd = {
@@ -244,8 +264,16 @@ export default async function RootLayout({
         numberOfPlayers: 1,
         inLanguage: "en",
         isAccessibleForFree: true,
-        image: `${siteUrl}${ogImage}`,
-        thumbnailUrl: `${siteUrl}${ogImage}`,
+        // image: repeat for multiple aspect ratios (Google's structured
+        // data guideline). The 1:1 square (1200×1200) is what Google
+        // prefers for search-result thumbnails; the 1200×630 wide is the
+        // general-purpose hero. Social platforms ignore JSON-LD entirely,
+        // so this array cannot leak into Discord/WhatsApp/Twitter previews.
+        image: [`${siteUrl}${ogImage}`, `${siteUrl}${OG_IMAGE_SQUARE}`],
+        // thumbnailUrl: THE designated search-results thumbnail — the
+        // square. This is the field Google weighs most for the small
+        // image beside your listing.
+        thumbnailUrl: `${siteUrl}${OG_IMAGE_SQUARE}`,
         screenshot: `${siteUrl}${OG_IMAGE_DEFAULT}`,
         datePublished: DATE_PUBLISHED,
         dateModified: DATE_MODIFIED,
@@ -272,10 +300,15 @@ export default async function RootLayout({
         description: DESC_LONG,
         isPartOf: { "@id": `${siteUrl}/#website` },
         about: { "@id": `${siteUrl}/#game` },
+        // primaryImageOfPage: the wide hero (matches the og:image meta tag).
         primaryImageOfPage: {
           "@type": "ImageObject",
           url: `${siteUrl}${OG_IMAGE_DEFAULT}`,
         },
+        // thumbnailUrl: square — the same Google-search thumbnail hint,
+        // applied to the homepage node itself (what actually ranks for
+        // "quizlet gravity" queries).
+        thumbnailUrl: `${siteUrl}${OG_IMAGE_SQUARE}`,
         inLanguage: "en",
         isAccessibleForFree: true,
         datePublished: DATE_PUBLISHED,
