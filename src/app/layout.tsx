@@ -30,11 +30,27 @@ const DESC_SHORT =
    change. Update DATE_MODIFIED whenever you change on-page content.
 ---------------------------------------------------------------------------- */
 const DATE_PUBLISHED = "2026-09-04"; // first commit / site launch
-const DATE_MODIFIED = "2026-09-06";  // this schema + SEO content update
+const DATE_MODIFIED = "2026-09-15";  // OG image fix: single og:image only
 
 /* ----------------------------------------------------------------------------
-   OG IMAGE — different image for LinkedIn vs. everywhere else.
-   [... unchanged logic from your current file ...]
+   OG IMAGE — exactly ONE image per response, chosen by crawler.
+
+   LinkedInBot  → /og-image-linkedin.png
+   Everything else (Discord, WhatsApp, Twitter/X, Facebook, Slack, iMessage,
+   Telegram, Google, AI crawlers, …) → /og-image.png
+
+   ⚠️ DO NOT add a second entry to openGraph.images. When several
+   og:image meta tags are present, every platform picks its own:
+   Discord & several scrapers use the LAST og:image tag (which is why
+   /og-image-square.png kept showing up in Discord previews), WhatsApp
+   and Facebook use the first, Twitter falls back differently — the only
+   deterministic result is: exactly ONE og:image tag = every platform
+   shows the same image.
+
+   /og-image-square.png and /og-image2.png are intentionally NOT
+   referenced anywhere in metadata anymore. They can stay in /public
+   (nothing links to them) or be deleted — they will no longer appear
+   in any link preview either way.
 ---------------------------------------------------------------------------- */
 const OG_IMAGE_DEFAULT = "/og-image.png";
 const OG_IMAGE_LINKEDIN = "/og-image-linkedin.png";
@@ -46,7 +62,7 @@ function isLinkedInCrawler(userAgent: string): boolean {
 }
 
 /* ----------------------------------------------------------------------------
-   generateMetadata() — [... unchanged from your current file ...]
+   generateMetadata() — single og:image for all non-LinkedIn crawlers.
 ---------------------------------------------------------------------------- */
 export async function generateMetadata(): Promise<Metadata> {
   const headersList = await headers();
@@ -55,6 +71,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const ogImage = isLinkedIn ? OG_IMAGE_LINKEDIN : OG_IMAGE_DEFAULT;
 
+  // ONE image only — no square thumbnail pushed anymore.
   const ogImages: NonNullable<NonNullable<Metadata["openGraph"]>["images"]> = [
     {
       url: ogImage,
@@ -63,14 +80,6 @@ export async function generateMetadata(): Promise<Metadata> {
       alt: "Quizlet Gravity mode — defend your planet from falling asteroids",
     },
   ];
-  if (!isLinkedIn) {
-    ogImages.push({
-      url: "/og-image-square.png",
-      width: 1200,
-      height: 1200,
-      alt: "Quizlet Gravity mode — square thumbnail",
-    });
-  }
 
   return {
     title: TITLE_LONG,
@@ -140,11 +149,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /* ----------------------------------------------------------------------------
-   JSON-LD structured data — same swap applies here. We re-detect the
-   LinkedIn crawler inside the component (since generateMetadata and the
-   component body run in separate contexts). The square image is used for
-   Google rich results (Googlebot), so for LinkedIn we use the LinkedIn
-   image instead.
+   JSON-LD structured data — same single-image rule applies here.
+   We re-detect the LinkedIn crawler inside the component (since
+   generateMetadata and the component body run in separate contexts).
+   LinkedInBot gets og-image-linkedin.png; every other crawler (including
+   Googlebot, which previously received the square image via VideoGame.image
+   / thumbnailUrl) now receives og-image.png.
 
    2026 schema upgrade — the @graph now contains:
      1. WebSite      — the site itself (publisher-linked, no fake SearchAction)
@@ -170,7 +180,10 @@ export default async function RootLayout({
   const userAgent = headersList.get("user-agent") ?? "";
   const isLinkedIn = isLinkedInCrawler(userAgent);
 
-  const squareOrLinkedIn = isLinkedIn ? OG_IMAGE_LINKEDIN : "/og-image-square.png";
+  // Single image everywhere: LinkedIn variant for LinkedInBot, otherwise
+  // the default og-image.png. (Previously this served og-image-square.png
+  // to Googlebot via VideoGame.image / thumbnailUrl.)
+  const ogImage = isLinkedIn ? OG_IMAGE_LINKEDIN : OG_IMAGE_DEFAULT;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -231,8 +244,8 @@ export default async function RootLayout({
         numberOfPlayers: 1,
         inLanguage: "en",
         isAccessibleForFree: true,
-        image: `${siteUrl}${squareOrLinkedIn}`,
-        thumbnailUrl: `${siteUrl}${squareOrLinkedIn}`,
+        image: `${siteUrl}${ogImage}`,
+        thumbnailUrl: `${siteUrl}${ogImage}`,
         screenshot: `${siteUrl}${OG_IMAGE_DEFAULT}`,
         datePublished: DATE_PUBLISHED,
         dateModified: DATE_MODIFIED,
