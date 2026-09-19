@@ -168,7 +168,6 @@ export function SiteHeader({
         </span>
         <span className="GravitySiteHeader-logoText">Quizlet</span>
       </div>
-      <div className="GravitySiteHeader-setTitle">{title}</div>
 
       {showMobileControls ? (
         <div className="GravitySiteHeader-mobileControls">
