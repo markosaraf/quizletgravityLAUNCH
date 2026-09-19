@@ -1964,7 +1964,7 @@
 }
 
 /* --- "Loaded your last set from this browser" link --- */
-[data-theme="light"] .GravityImportView .UILink {
+.GravityImportView .UILink {
   color: #fff;
 }
 
