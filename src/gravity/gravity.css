@@ -1257,9 +1257,15 @@
 
 /* ---------------- Import screen (Kysariin-style set input) ---------------- */
 .GravityImportView {
-  background: var(--gray-900) url('/assets/gravity/stars.jpg') no-repeat bottom center fixed;
-  background-size: cover;
-  color: #fff;
+  background: var(--gray-900)
+    url('/assets/gravity/intro-bg@2x.jpg')
+    no-repeat bottom center fixed;
+
+  /* DPR 1 devices use intro-bg.jpg; DPR 2+ devices use intro-bg@2x.jpg. */
+  background-image: image-set(
+    url('/assets/gravity/intro-bg.jpg') 1x,
+    url('/assets/gravity/intro-bg@2x.jpg') 2x
+  );
   display: flex;
   flex-direction: column;
   min-height: 100vh;
