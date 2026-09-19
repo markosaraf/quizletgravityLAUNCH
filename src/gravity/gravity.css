@@ -1965,7 +1965,7 @@
 
 /* --- "Loaded your last set from this browser" link --- */
 [data-theme="light"] .GravityImportView .UILink {
-  color: var(--light-logo-blue);
+  color: #fff;
 }
 
 /* =====================================================================
