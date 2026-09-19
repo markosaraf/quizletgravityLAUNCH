@@ -1266,6 +1266,12 @@
     url('/assets/gravity/intro-bg.jpg') 1x,
     url('/assets/gravity/intro-bg@2x.jpg') 2x
   );
+   background-position: bottom center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-size: cover;
+
+  color: #fff;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
