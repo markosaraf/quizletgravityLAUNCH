@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -12,6 +13,35 @@ import { GAME_FEATURES } from "./seo-content";
 ---------------------------------------------------------------------------- */
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizletgravity.com";
+
+/* ----------------------------------------------------------------------------
+   FALLBACK FONT — Poppins (latin + latin-ext).
+
+   WHY: the bundled Hurme Geometric Sans No.2 woff2
+   (public/assets/gravity/hurmegeosans-no2-400.*) is subsetted to basic
+   Latin — it has NO glyphs for ä ö ü é è á à ß ç ñ å ø æ … . Without a
+   matched fallback, every accented character was rendered by the next
+   font in the stack (Segoe UI / Helvetica / Roboto), which visually
+   looks BOLDER than the surrounding Hurme text.
+
+   Poppins is the closest open geometric sans to Hurme No.2 and ships
+   with full latin-ext coverage. next/font/google self-hosts it at
+   build time (no runtime request to Google). Declaring weights
+   400–700 keeps the fallback weight consistent wherever the game CSS
+   uses bold/semibold text.
+
+   gravity.css picks it up per-character:
+     font-family: hurmegeosans, var(--font-poppins, Poppins), …
+   Basic Latin glyphs exist in Hurme -> Hurme is used; accented glyphs
+   are missing in Hurme -> only those characters fall through to
+   Poppins, at the same weight. No more fake-bold special letters.
+---------------------------------------------------------------------------- */
+const poppins = Poppins({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
+  display: "swap",
+});
 
 /* ----------------------------------------------------------------------------
    SEO strings (split per-platform for length tuning — see previous version
@@ -334,7 +364,10 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className="antialiased">
+      <body className={`antialiased ${poppins.variable}`}>
+        {/* `${poppins.variable}` defines --font-poppins (used by the
+            hurmegeosans fallback stack in gravity.css and by
+            --font-sans in globals.css). */}
         {/* JSON-LD structured data for Google rich results + LLM grounding. */}
         <script
           type="application/ld+json"
