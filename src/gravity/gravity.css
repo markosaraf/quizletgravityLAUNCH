@@ -49,7 +49,12 @@
 .gravity-root textarea,
 .gravity-root button,
 .gravity-root select {
-  font-family: hurmegeosans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* Per-character fallback: hurmegeosans is subsetted to basic Latin
+     (no ä ö ü é ß glyphs). Characters missing from Hurme fall through
+     to Poppins (--font-poppins, loaded in layout.tsx with latin-ext),
+     which matches Hurme's geometric style and weight — previously they
+     fell through to system fonts (Segoe UI/Helvetica) and looked bold. */
+  font-family: hurmegeosans, var(--font-poppins, Poppins), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   box-sizing: border-box;
 }
 
