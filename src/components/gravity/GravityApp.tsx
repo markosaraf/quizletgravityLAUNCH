@@ -9,6 +9,7 @@ import { GameplayView, useGameplaySize } from './GameplayView';
 import { ModeControls, SiteHeader } from './ModeControls';
 import { StartView, GameOverView, type LeaderboardEntry } from './StartScreens';
 import { ImportScreen } from './ImportScreen';
+import { setGameStarted } from './LandingSections';
 
 export function GravityApp() {
   const [started, setStarted] = useState(false);
@@ -126,6 +127,14 @@ export function GravityApp() {
     setCurrentTryIndex(-1);
     setLastRecordedKey(null);
   }, []);
+
+  // Mirror the `started` flag into the LandingSections store: while a
+  // game session is running, the "How to play" + FAQ landing sections
+  // are removed from the DOM entirely (they belong to the first page
+  // only). Clicking "New set" flips this back to false and they return.
+  useEffect(() => {
+    setGameStarted(started);
+  }, [started]);
 
   if (!started || !data) {
     return <ImportScreen onStart={handleStartSet} />;
