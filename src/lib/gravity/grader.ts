@@ -4,16 +4,44 @@ import type { GradingResult } from './types';
  * Answer grader — approximation of Quizlet's shared Kotlin grader
  * (quizlet-shared-kotlin-grader): normalization, typo tolerance,
  * multi-answer support and optional partial answers.
+ *
+ * ── DIACRITICS POLICY (ä ö ü é è á à ç ñ ß …) ─────────────────────────
+ * STRICT mode ("Allow partial answers" OFF, the default):
+ *   Accented characters must be typed EXACTLY. Typing "a" for "ä",
+ *   "o" for "ö" or "e" for "é" is WRONG. The typo tolerance
+ *   (Levenshtein distance) can never rescue a diacritic difference
+ *   either — when the ONLY difference between the typed word and the
+ *   answer word is the accents, it always grades incorrect.
+ * LENIENT mode ("Allow partial answers" ON):
+ *   Diacritics are ignored ("schön" == "schon"), exactly like the
+ *   previous behaviour, and typing only part of the answer is enough.
  */
 
-function normalize(s: string): string {
+/**
+ * Strict normalization: keeps every accented character but makes the
+ * different unicode encodings of the same letter comparable, so "é"
+ * typed as one codepoint and "é" typed as "e" + combining accent both
+ * end up as the identical string before comparing.
+ */
+function normalizeStrict(s: string): string {
   return s
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // strip diacritics
+    .normalize('NFC') // e + U+0301 -> é (canonical composition)
     .replace(/[.,!?;:"'`()[\]{}]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** "ä" -> "a", "é" -> "e" — used by LENIENT mode only. */
+function stripDiacritics(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // strip diacritics
+}
+
+/** Lenient normalization: strict normalization + diacritic stripping. */
+function normalizeLenient(s: string): string {
+  return stripDiacritics(normalizeStrict(s));
 }
 
 function levenshtein(a: string, b: string): number {
@@ -72,8 +100,17 @@ function candidates(correct: string): string[] {
   return out;
 }
 
-function matchesWord(typedWord: string, answerWord: string): boolean {
+function matchesWord(typedWord: string, answerWord: string, strict: boolean): boolean {
   if (typedWord === answerWord) return true;
+
+  // STRICT mode: if the two words become identical once accents are
+  // removed, the only difference IS the accents ("schon" vs "schön").
+  // That is exactly the mistake that must grade wrong — return false
+  // before the typo-tolerance path can paper over it.
+  if (strict && stripDiacritics(typedWord) === stripDiacritics(answerWord)) {
+    return false;
+  }
+
   const tol = wordTolerance(answerWord.length);
   if (tol === 0) {
     // very short words must match exactly (but allow simple plural/verb endings)
@@ -89,18 +126,18 @@ function matchesWord(typedWord: string, answerWord: string): boolean {
   return levenshtein(typedWord, answerWord) <= tol;
 }
 
-function fullMatch(typed: string[], answer: string[]): boolean {
+function fullMatch(typed: string[], answer: string[], strict: boolean): boolean {
   if (typed.length !== answer.length) return false;
-  return typed.every((w, i) => matchesWord(w, answer[i]));
+  return typed.every((w, i) => matchesWord(w, answer[i], strict));
 }
 
-function partialMatch(typed: string[], answer: string[]): boolean {
+function partialMatch(typed: string[], answer: string[], strict: boolean): boolean {
   // every typed token must be found somewhere in the answer, in order tolerance
   let ai = 0;
   for (const tw of typed) {
     let found = -1;
     for (let i = ai; i < answer.length; i++) {
-      if (matchesWord(tw, answer[i])) {
+      if (matchesWord(tw, answer[i], strict)) {
         found = i;
         break;
       }
@@ -116,15 +153,22 @@ export function grade(
   typed: string,
   opts: { acceptsPartialAnswer?: boolean } = {},
 ): GradingResult {
-  const t = normalize(typed ?? '');
+  // STRICT whenever "Allow partial answers" is NOT selected:
+  // accents are required and diacritic-only slips never pass.
+  const strict = !opts.acceptsPartialAnswer;
+  const norm = strict ? normalizeStrict : normalizeLenient;
+
+  const t = norm(typed ?? '');
   if (!t) return { isCorrect: false };
-  const cands = candidates(correct ?? '').map(normalize).filter(Boolean);
+  const cands = candidates(correct ?? '').map(norm).filter(Boolean);
   for (const c of cands) {
     if (t === c) return { isCorrect: true };
     const tw = tokens(t);
     const aw = tokens(c);
-    if (fullMatch(tw, aw)) return { isCorrect: true };
-    if (opts.acceptsPartialAnswer && partialMatch(tw, aw)) return { isCorrect: true };
+    if (fullMatch(tw, aw, strict)) return { isCorrect: true };
+    if (opts.acceptsPartialAnswer && partialMatch(tw, aw, strict)) {
+      return { isCorrect: true };
+    }
   }
   return { isCorrect: false };
 }
