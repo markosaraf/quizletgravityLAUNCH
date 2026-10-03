@@ -16,12 +16,11 @@
 ---------------------------------------------------------------------------- */
 
 import { GravityApp } from '@/components/gravity/GravityApp';
+import { LandingSections } from '@/components/gravity/LandingSections';
 import '@/gravity/gravity.css';
 import {
   FAQ_ITEMS,
   HOW_TO_STEPS,
-  FaqSection,
-  HowToSection,
 } from './seo-content';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://quizletgravity.com';
@@ -67,8 +66,10 @@ export default function Home() {
   return (
     <>
       <GravityApp />
-      <HowToSection />
-      <FaqSection />
+      {/* "How to play" + FAQ — first page only. Still server-rendered
+          into the initial HTML for crawlers, but LandingSections removes
+          them from the DOM as soon as a game session starts. */}
+      <LandingSections />
 
       {/* Structured data — injected into the initial HTML so every crawler
           (Googlebot, GPTBot, PerplexityBot, ClaudeBot) sees it without
