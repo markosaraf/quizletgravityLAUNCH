@@ -5,16 +5,13 @@
 export const STRINGS = {
   study_mode_name: 'Gravity',
   splash: {
-    title: 'Defend Your Planet!',
-    description:
-      'Protect your planet from incoming asteroids by typing the correct answers before they land.',
-    warning_red: 'Watch out for red asteroids!',
-    warning_miss: 'If you miss a term twice they will destroy your planet.',
-    start_button: 'Start',
+    title: 'Gravity',
+    description: 'Protect the planets from incoming asteroids.',
+    start_button: 'Get Started',
   },
   options: {
     title: 'Options',
-    next_button: 'Next',
+    next_button: "Let's go",
     side_selector: {
       title: 'Answer with',
       term: 'Term',
@@ -43,13 +40,8 @@ export const STRINGS = {
   },
   directions: {
     title: 'How to play',
-    body: [
-      'Type the answer to destroy each asteroid before it reaches your planet.',
-      "If you miss one, you'll have to type the correct answer to keep playing. Miss the same term twice and the game is over.",
-      "Don't know an answer? Press ESC to skip it.",
-      'Asteroids fall faster as you level up. Good luck!',
-    ],
-    start_button: 'Start',
+    body: ['If you miss a term twice, they will destroy your planet.'],
+    start_button: 'Start Game',
   },
   sidebar: {
     score_label: 'Score',
