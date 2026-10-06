@@ -15,6 +15,7 @@ import { TypingPrompt } from './TypingPrompt';
 
 interface Props {
   data: GameData;
+  specialChars: string[];
   onMissed: (liveTermId: string) => void;
   onType: (value: string) => void;
   onGrade: () => void;
@@ -26,6 +27,7 @@ interface Props {
 
 function GameplayViewBase({
   data,
+  specialChars,
   onMissed,
   onType,
   onGrade,
@@ -99,6 +101,7 @@ function GameplayViewBase({
               term={data.terms[copiedLive.luid]}
               showingSide={copiedLive.side}
               previouslyTypedText={data.mainTypingPromptValue}
+              specialChars={specialChars}
               onSubmit={onCopyAnswer}
             />
           </div>
@@ -109,6 +112,7 @@ function GameplayViewBase({
             gameState={data.gameState}
             textValue={data.mainTypingPromptValue}
             placeholderText={placeholder}
+            specialChars={specialChars}
             onChange={onType}
             onSubmit={onGrade}
           />
@@ -175,7 +179,6 @@ export function useGameplaySize(
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
-      if (t) clearTimeout(t);
     };
   }, [ref, remeasureKey]);
 
