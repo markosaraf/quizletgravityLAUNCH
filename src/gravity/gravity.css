@@ -133,7 +133,6 @@
 
 /* ---------------- Copy-the-answer view ---------------- */
 .GravityCopyTermView {
-  background: var(--backdrop-opacity);
   bottom: 0;
   height: 120%;
   left: 0;
@@ -499,14 +498,6 @@
   margin: 1.5rem 0 3.75rem;
 }
 
-.GravityStartView-backdrop {
-  background: var(--backdrop-opacity);
-  bottom: 0;
-  left: 0;
-  position: absolute;
-  right: 0;
-  top: 0;
-}
 
 /* ---------------- Falling term (asteroid) ---------------- */
 .GravityTerm.is-showing {
