@@ -13,6 +13,10 @@ import { LevelUpBadge } from './LevelUpBadge';
 import { Planets } from './Planet';
 import { TypingPrompt } from './TypingPrompt';
 
+/** see TypingPrompt.tsx — inserter published through a ref by each typing
+    field so the shared special-character squares can reach the active one */
+type CharInserter = (char: string) => void;
+
 interface Props {
   data: GameData;
   specialChars: string[];
@@ -64,6 +68,21 @@ function GameplayViewBase({
   const termBeingCopied = data.termBeingCopied;
   const copiedLive = termBeingCopied ? data.liveTerms[termBeingCopied] : null;
 
+  // --- special-character square routing -------------------------------------
+  // The squares always rest in the SAME place above the MAIN typing field —
+  // they never move to the top when the copy-the-answer view opens. So
+  // every square click is routed to whichever field is currently active:
+  // the copy field while a missed word is being copied, otherwise the main
+  // field during normal play.
+  const mainInsertRef = useRef<CharInserter | null>(null);
+  const copyInsertRef = useRef<CharInserter | null>(null);
+  const handleInsertChar = useCallback(
+    (char: string) => {
+      (termBeingCopied ? copyInsertRef.current : mainInsertRef.current)?.(char);
+    },
+    [termBeingCopied],
+  );
+
   const onPlanetLoadedRef = useRef(onPlanetLoaded);
   useEffect(() => {
     onPlanetLoadedRef.current = onPlanetLoaded;
@@ -101,7 +120,7 @@ function GameplayViewBase({
               term={data.terms[copiedLive.luid]}
               showingSide={copiedLive.side}
               previouslyTypedText={data.mainTypingPromptValue}
-              specialChars={specialChars}
+              insertRef={copyInsertRef}
               onSubmit={onCopyAnswer}
             />
           </div>
@@ -113,6 +132,8 @@ function GameplayViewBase({
             textValue={data.mainTypingPromptValue}
             placeholderText={placeholder}
             specialChars={specialChars}
+            insertRef={mainInsertRef}
+            onInsertChar={handleInsertChar}
             onChange={onType}
             onSubmit={onGrade}
           />
