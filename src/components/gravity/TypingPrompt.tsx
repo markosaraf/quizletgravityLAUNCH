@@ -1,11 +1,13 @@
 import { memo, useEffect, useRef } from 'react';
 import { GAME_STATES } from '@/lib/gravity/constants';
 import { useDelayedUnmount } from './useDelayedUnmount';
+import { SpecialCharBar } from './SpecialCharBar';
 
 interface Props {
   gameState: string;
   textValue: string;
   placeholderText: string;
+  specialChars: string[];
   onChange: (value: string) => void;
   onSubmit: () => void;
 }
@@ -14,10 +16,15 @@ function TypingPromptBase({
   gameState,
   textValue,
   placeholderText,
+  specialChars,
   onChange,
   onSubmit,
 }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // caret position to restore after a special-char button inserts text
+  // (the value is controlled, so the caret must be re-set after the
+  // store round-trips the new value back into the textarea)
+  const pendingCaretRef = useRef<number | null>(null);
   const isFreeFall = gameState === GAME_STATES.FREE_FALL;
   // The prompt stays visible through LEVEL_UP (original behavior)
   const wantShown = isFreeFall || gameState === GAME_STATES.LEVEL_UP;
@@ -38,12 +45,37 @@ function TypingPromptBase({
     }
   }, [isFreeFall, mounted]);
 
+  // restore the caret after a special-character insertion
+  useEffect(() => {
+    if (pendingCaretRef.current === null) return;
+    const pos = pendingCaretRef.current;
+    pendingCaretRef.current = null;
+    const el = inputRef.current;
+    if (el) {
+      el.setSelectionRange(pos, pos);
+      el.focus({ preventScroll: true });
+    }
+  }, [textValue]);
+
+  /** insert a special character at the caret (replacing any selection) */
+  const insertSpecialChar = (char: string) => {
+    const el = inputRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    pendingCaretRef.current = start + char.length;
+    onChange(el.value.slice(0, start) + char + el.value.slice(end));
+  };
+
   if (!mounted) return null;
 
   return (
     <div className={`GravityTypingPrompt${wantShown ? ' is-showingInput' : ''}`}>
       <div className="GravityTypingPrompt-inner">
         <div className="GravityTypingPrompt-inputWrapper">
+          {/* Special characters that exist in the current set — click to
+              insert at the caret. Only rendered when the set has some. */}
+          <SpecialCharBar chars={specialChars} onInsert={insertSpecialChar} />
           {/* no autoFocus: it calls focus() without preventScroll, which
               auto-scrolls to the field on mobile. The effect above focuses
               the input (without scrolling) once it is mounted. */}
