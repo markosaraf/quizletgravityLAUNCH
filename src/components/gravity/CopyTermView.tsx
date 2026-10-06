@@ -2,13 +2,19 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { COPY_SUBMIT_DEBOUNCE, COPY_SUBMIT_INITIAL_DELAY, COPY_FOCUS_DELAY } from '@/lib/gravity/constants';
 import { STRINGS } from '@/lib/gravity/strings';
 import type { GravityTerm } from '@/lib/gravity/types';
-import { SpecialCharBar } from './SpecialCharBar';
+
+/** see TypingPrompt.tsx — inserter published through a ref so the shared
+    special-character squares can route clicks to the active field */
+type CharInserter = (char: string) => void;
 
 interface Props {
   term: GravityTerm;
   showingSide: 'word' | 'definition';
   previouslyTypedText: string;
-  specialChars: string[];
+  /** this field publishes its inserter here so the special-character
+      squares (which rest above the MAIN typing field, unmoving) can
+      insert into this field while the copy view is open */
+  insertRef: { current: CharInserter | null };
   onSubmit: (liveTermId: string, answer: string) => void;
   liveTermId: string;
 }
@@ -17,7 +23,7 @@ function CopyTermViewBase({
   term,
   showingSide,
   previouslyTypedText,
-  specialChars,
+  insertRef,
   onSubmit,
   liveTermId,
 }: Props) {
@@ -79,6 +85,15 @@ function CopyTermViewBase({
     scheduleSubmit(next);
   };
 
+  // publish this field's inserter (re-registered on every render so the
+  // closure never goes stale; cleared again when this view unmounts)
+  useEffect(() => {
+    insertRef.current = insertSpecialChar;
+    return () => {
+      insertRef.current = null;
+    };
+  });
+
   // original: prompt section shows the side that was falling,
   // answer section shows the other side
   const promptSideContent =
@@ -109,8 +124,10 @@ function CopyTermViewBase({
           <div>{answerSideContent}</div>
         </div>
         <div className="GravityCopyTermView-inputWrapper">
-          {/* Same special-character bar as the main typing field */}
-          <SpecialCharBar chars={specialChars} onInsert={insertSpecialChar} />
+          {/* NOTE: intentionally NO special-character squares here — they
+              always rest in the same place above the main typing field at
+              the bottom and route their clicks into this field instead of
+              moving to the top with the copy view. */}
           <textarea
             ref={inputRef}
             autoCapitalize="none"
