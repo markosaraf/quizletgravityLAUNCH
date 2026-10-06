@@ -607,6 +607,20 @@
   opacity: 1;
 }
 
+/* Missed-word state (copy-the-answer view open): the main input hides but
+   KEEPS OCCUPYING ITS SPACE, so the special-character squares above it rest
+   at exactly the same place as always. The squares stay visible and
+   clickable and insert into the copy field (see GameplayView's routing). */
+.is-copyState .GravityTypingPrompt-input {
+  visibility: hidden;
+}
+
+/* the prompt inner (squares + space-holding hidden input) stays visible
+   while the copy-the-answer view is open — only the input itself hides */
+.is-showingBar .GravityTypingPrompt-inner {
+  opacity: 1;
+}
+
 .GravityTypingPrompt-inputWrapper {
   background: transparent;
   background-size: 100% 100%;
@@ -2656,15 +2670,20 @@
 }
 
 /* ============================================================
-   Special character bar — rectangle box ABOVE the typing field
-   and above the copy-the-answer input. Shows one chip per
-   special character (ä ö é ß š …) that exists in the set
-   currently being learned. Box colour: rgb(217, 220, 238).
+   Special character squares — the letter boxes ABOVE the typing
+   field. There is intentionally NO surrounding bar: the squares
+   themselves are the whole widget and sit in the place a bar
+   would have occupied. Each square is exactly as tall as the old
+   bar was (2 × 0.5rem padding + 1rem line + 2 × 0.4rem chip
+   padding + 2px borders = calc(2.8rem + 2px)) and carries the
+   rgb(217, 220, 238) fill directly. One square per special
+   character that exists in the set currently being learned.
+   The row lives inside the main typing prompt, so it ALWAYS
+   rests in the same place — it never jumps to the top when the
+   copy-the-answer view opens after a missed word.
    ============================================================ */
 
 .GravitySpecialChars {
-  background: rgb(217, 220, 238);
-  border-radius: 8px;
   box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
@@ -2672,29 +2691,29 @@
   justify-content: center;
   margin: 0 auto 0.5rem;
   max-width: 100%;
-  padding: 0.5rem;
   width: 26.25rem; /* same width as the typing field below it */
 }
 
 .GravitySpecialChars-button {
-  background: #fff;
+  background: rgb(217, 220, 238);
   border: 1px solid rgba(41, 50, 70, 0.18);
   border-radius: 6px;
   box-sizing: border-box;
   color: #293246;
   cursor: pointer;
   font-family: inherit;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 400;
+  height: calc(2.8rem + 2px); /* exactly as tall as the old bar was */
   line-height: 1;
-  min-width: 2rem;
-  padding: 0.4rem 0.3rem;
+  min-width: calc(2.8rem + 2px); /* true squares */
+  padding: 0 0.3rem;
   touch-action: manipulation;
   transition: background 0.12s, transform 0.12s;
 }
 
 .GravitySpecialChars-button:hover {
-  background: #e8ebf7;
+  background: rgb(202, 206, 229); /* slightly darker shade of the same fill */
   border-color: rgba(41, 50, 70, 0.35);
 }
 
@@ -2707,4 +2726,3 @@
   outline: 2px solid #4255b4;
   outline-offset: 1px;
 }
-
