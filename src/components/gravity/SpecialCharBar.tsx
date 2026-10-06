@@ -1,16 +1,21 @@
 import { memo } from 'react';
 
 /* ----------------------------------------------------------------------------
-   SPECIAL CHARACTER BAR — the rectangle box ABOVE the typing field
-   (and above the copy-the-answer input) with one button per special
-   character that exists in the currently-learned set.
+   SPECIAL CHARACTER SQUARES — the letter boxes ABOVE the typing field,
+   one per special character that exists in the currently-learned set.
 
-   Colour: rgb(217, 220, 238) box background, white chips inside.
+   There is deliberately NO surrounding bar: the squares themselves are
+   the whole widget and carry the rgb(217, 220, 238) fill directly (each
+   square is exactly as tall as the old bar was — see gravity.css).
+
+   The squares always rest in the same place above the MAIN typing field;
+   they never move to the top when the copy-the-answer view opens. Every
+   click is routed by GameplayView to the field that is currently active.
 
    The buttons use onMouseDown preventDefault so clicking one NEVER
-   steals focus from the typing field — the caret (and the open mobile
-   keyboard) stays exactly where it was, and the character is inserted
-   at the caret position by the parent component.
+   steals focus from the active typing field — the caret (and the open
+   mobile keyboard) stays exactly where it was, and the character is
+   inserted at the caret position.
 ---------------------------------------------------------------------------- */
 
 interface Props {
@@ -19,7 +24,7 @@ interface Props {
 }
 
 function SpecialCharBarBase({ chars, onInsert }: Props) {
-  if (!chars.length) return null; // set has no special characters -> no bar
+  if (!chars.length) return null; // set has no special characters -> no squares
 
   return (
     <div className="GravitySpecialChars" role="group" aria-label="Special characters">
