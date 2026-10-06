@@ -15,33 +15,36 @@ const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizletgravity.com";
 
 /* ----------------------------------------------------------------------------
-   FALLBACK FONT — Poppins (latin + latin-ext).
+   FALLBACK FONT — Poppins, weight 400 ONLY (latin + latin-ext).
 
-   WHY: the bundled Hurme Geometric Sans No.2 woff2
+   WHY POPPINS AT ALL: the bundled Hurme Geometric Sans No.2 woff2
    (public/assets/gravity/hurmegeosans-no2-400.*) is subsetted to basic
-   Latin — it has NO glyphs for ä ö ü é è á à ß ç ñ å ø æ … . Without a
-   matched fallback, every accented character was rendered by the next
-   font in the stack (Segoe UI / Helvetica / Roboto), which visually
-   looks BOLDER than the surrounding Hurme text.
+   Latin — it has NO glyphs for ä ö ü é è á à ß ç ñ š đ č ć ž å ø æ … .
+   Without a matched fallback those characters render in Segoe UI /
+   Helvetica and look completely different from the surrounding text.
+   Poppins is the closest open geometric sans to Hurme No.2 and its
+   latin-ext subset covers French, German, Serbian (Latin), Spanish,
+   Turkish, Polish … — every accented letter the game needs.
 
-   Poppins is the closest open geometric sans to Hurme No.2 and ships
-   with full latin-ext coverage. next/font/google self-hosts it at
-   build time (no runtime request to Google). Declaring weights
-   400–700 keeps the fallback weight consistent wherever the game CSS
-   uses bold/semibold text.
-
-   gravity.css picks it up per-character:
-     font-family: hurmegeosans, var(--font-poppins, Poppins), …
-   Basic Latin glyphs exist in Hurme -> Hurme is used; accented glyphs
-   are missing in Hurme -> only those characters fall through to
-   Poppins, at the same weight. No more fake-bold special letters.
+   WHY WEIGHT 400 ONLY — THE IMPORTANT PART:
+   Only a Hurme 400 file exists. For text styled font-weight 600/700
+   (asteroid terms, the green copy-answer solution, the terms table),
+   the browser FAKE-BOLDS Hurme 400, while a real Poppins 600/700 face
+   is genuinely heavier — that is exactly why special characters looked
+   "extra bold" inside bold text even after the fallback was added.
+   With Poppins shipping ONLY a 400 face, bold is SYNTHESIZED on Poppins
+   by the same browser algorithm that fake-bolds Hurme — both fonts get
+   the identical treatment, so every glyph in a bold run has the same
+   visual weight. (The 400-weight typing field already looked perfect
+   for the same reason: no real-vs-fake mismatch.)
 ---------------------------------------------------------------------------- */
 const poppins = Poppins({
   subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400"],
   variable: "--font-poppins",
   display: "swap",
 });
+
 
 /* ----------------------------------------------------------------------------
    SEO strings (split per-platform for length tuning — see previous version
