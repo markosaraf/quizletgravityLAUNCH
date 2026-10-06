@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { GAME_STATES } from '@/lib/gravity/constants';
 import { gravityStore } from '@/lib/gravity/store';
 import type { GameData, GravitySet, GravityTerm } from '@/lib/gravity/types';
 import { getStoredPartialAnswer } from '@/lib/gravity/parse';
+import { collectSpecialChars } from '@/lib/gravity/specialChars';
 import { GameplayView, useGameplaySize } from './GameplayView';
 import { ModeControls, SiteHeader } from './ModeControls';
 import { StartView, GameOverView, type LeaderboardEntry } from './StartScreens';
@@ -64,6 +65,16 @@ export function GravityApp() {
     setCurrentTryIndex(-1);
     setLastRecordedKey(null);
   }, []);
+
+  // Special characters (ä ö é ß š …) that exist in the CURRENT set —
+  // shown as clickable insert buttons above the typing field and the
+  // copy-the-answer input. Collected from BOTH sides of every term.
+  // data.terms keeps a stable reference across store ticks (change()
+  // shallow-copies data), so this only recomputes when a new set loads.
+  const specialChars = useMemo(
+    () => (data ? collectSpecialChars(Object.values(data.terms)) : []),
+    [data?.terms],
+  );
 
   // keyboard: ESC skips the first live term (keymaster GAMEPLAY scope)
   useEffect(() => {
@@ -173,6 +184,7 @@ export function GravityApp() {
           >
             <GameplayView
               data={data}
+              specialChars={specialChars}
               onMissed={(id) => gravityStore.missTerm(id, false)}
               onType={(v) => gravityStore.updateMainTypingPromptValue(v)}
               onGrade={() => gravityStore.gradeAnswer()}
