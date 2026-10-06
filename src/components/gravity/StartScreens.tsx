@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { DIFFICULTY_ORDER, GAME_STATES } from '@/lib/gravity/constants';
 import { STRINGS, format } from '@/lib/gravity/strings';
 import type { Difficulty, Side } from '@/lib/gravity/constants';
@@ -68,11 +67,6 @@ export function OptionsView({
   onSelectedOnlyChange?: (selectedOnly: boolean) => void;
   onNext: () => void;
 }) {
-  const [showMultipleAnswersOption, setShowMultipleAnswersOption] = useState(false);
-  const [acceptsPartialAnswer, setAcceptsPartialAnswer] = useState(
-    data.acceptsPartialAnswer,
-  );
-
   // Count how many terms are starred — used to disable the "Starred terms"
   // toggle when there are zero starred terms (would otherwise produce an
   // empty game / "ran out of terms" error screen).
@@ -208,35 +202,23 @@ export function OptionsView({
           </div>
 
           <div className="GravityOptionsView-row">
-            {showMultipleAnswersOption ? (
-              <div>
-                <label className="GravityUICheckbox">
-                  <input
-                    type="checkbox"
-                    checked={acceptsPartialAnswer}
-                    onChange={() => {
-                      const next = !acceptsPartialAnswer;
-                      setAcceptsPartialAnswer(next);
-                      onPartialChange(next);
-                    }}
-                  />
-                  <span className="GravityUICheckbox-label">
-                    {STRINGS.options.multiple_answers.label}
-                  </span>
-                </label>
-                <div className="GravityUISmall">
-                  {STRINGS.options.multiple_answers.description}
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="UILink"
-                onClick={() => setShowMultipleAnswersOption(true)}
-              >
-                {STRINGS.options.multiple_answers.show_feedback_options}
-              </button>
-            )}
+            {/* Always visible — the old "Show advanced options" click-through
+                link is gone — so the player ALWAYS sees whether partial
+                answers are currently selected or not. Bound directly to the
+                store value (single source of truth). */}
+            <label className="GravityUICheckbox">
+              <input
+                type="checkbox"
+                checked={data.acceptsPartialAnswer}
+                onChange={() => onPartialChange(!data.acceptsPartialAnswer)}
+              />
+              <span className="GravityUICheckbox-label">
+                {STRINGS.options.multiple_answers.label}
+              </span>
+            </label>
+            <div className="GravityUISmall">
+              {STRINGS.options.multiple_answers.description}
+            </div>
           </div>
 
           <div className="GravityOptionsView-nextButtonWrapper">
@@ -315,7 +297,10 @@ export function StartView({
 }: StartScreenProps) {
   return (
     <div className="GravityStartView">
-      <div className="GravityStartView-backdrop" />
+      {/* NOTE: the original dark .GravityStartView-backdrop overlay was
+          intentionally removed — the intro ("Defend Your Planet!"), options
+          and how-to-play screens now sit directly on the starry background
+          with no dimming layer. */}
       {(() => {
         switch (data.gameState) {
           case GAME_STATES.INTRO:
