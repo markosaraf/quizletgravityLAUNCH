@@ -2,7 +2,7 @@
 
 ## Request path
 
-The browser sends `POST /api/import-quizlet` with `{ "url": "https://quizlet.com/..." }`. The server accepts only Quizlet set-page URLs, strips query strings/fragments, and requests raw HTML from Firecrawl v2. It does not forward cookies, login credentials or arbitrary destinations. The former proxy, Jina/ZAI, internal web API and archive creation/lookup paths have been removed. The legacy GET endpoint remains for already-open tabs.
+The browser sends `POST /api/import-quizlet` with `{ "url": "https://quizlet.com/..." }`. The server accepts Quizlet set-page URLs, strips query strings/fragments, and requests raw HTML from Firecrawl v2. Legacy ID-first links retain their locale/slug. Translated links such as `/de/karteikarten/einmaleins-250942042` are recognised by the locale/resource/slug-ID structure and rebuilt as `https://quizlet.com/250942042/`. Locale and translated resource names are not restricted to a fixed language list. This handles Finnish ID-first links as well as translated and non-Latin URL structures without forwarding arbitrary path segments. It does not forward cookies, login credentials or arbitrary destinations. The former proxy, Jina/ZAI, internal web API and archive creation/lookup paths have been removed. The legacy GET endpoint remains for already-open tabs.
 
 Parsing is deterministic: it reads the requested set’s embedded JSON, verifies the set/container/item identities and expected active item count, and orders cards by rank. Partial or unsupported pages fail rather than silently importing fewer cards. Cards without text on both sides are counted as skipped and reported. Distinct source IDs with equal text remain distinct. Embedded newlines/tabs are preserved through preview, separator changes and game setup.
 
@@ -46,3 +46,9 @@ The production browser check verified the actual same-origin POST, all 62 cards 
 The source is saved locally in this worktree. GitHub push was rejected because the local Git credentials identify `natasasdj`; no remote branch was changed. The GitHub main branch therefore still contains the previous importer. Before subsequent Git-triggered deployments, push/merge this tested branch using the GitHub account with write access so it does not get overwritten by the old code.
 
 `FIRECRAWL_API_KEY` is configured as a Secret for Production and Preview. No key is in the source or browser bundle. Rotate keys through Firecrawl and update Vercel directly, then redeploy.
+
+## Localized URL regression (15 October 2026)
+
+The initial URL validator rejected the real German route `/de/karteikarten/einmaleins-250942042` before contacting Firecrawl. Structural matching now extracts the terminal set ID without a dictionary of translated route names. Exact hostname checks, bounded numeric IDs, decoded-segment validation and complete fetched-set identity checks remain.
+
+Added synthetic route tests cover German, French, Finnish, Spanish, Japanese, Chinese and Arabic characters plus malformed/encoded/extra-path rejection. Actual provider fixtures verified the user’s German Einmaleins set (100 cards) and a real Finnish `/fi/666063657/quizlet-flash-cards/` set (20 cards). Canonical numeric retrieval of the German set was also verified before deployment. Synthetic localized routes test parser generality and are not claimed to be actual Quizlet endpoints.

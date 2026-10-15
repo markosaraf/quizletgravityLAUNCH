@@ -76,6 +76,47 @@ test('rejects spoofed hosts, credentials, paths and protocols before fetching', 
   ]) assert.throws(() => normalizeQuizletUrl(input), input);
 });
 
+test('accepts translated slug-ID set routes without a language or translation allowlist', () => {
+  // German and French are actual route shapes. The other translated paths
+  // deliberately test structural support, not an inventory of Quizlet routes.
+  for (const path of [
+    '/de/karteikarten/einmaleins-250942042',
+    '/fr-fr/fiches-de-memorisation/multiplications-250942042/',
+    '/fi/muistikortit/kertotaulu-250942042',
+    '/es/tarjetas/multiplicacion-250942042',
+    '/ja/単語カード/掛け算-250942042',
+    '/zh-Hant-TW/学习卡/乘法-250942042',
+    '/ar/بطاقات/الضرب-250942042',
+  ]) {
+    assert.deepEqual(normalizeQuizletUrl(`https://www.quizlet.com${path}?i=share#cards`), {
+      setId: '250942042', url: 'https://quizlet.com/250942042/',
+    }, path);
+  }
+  assert.deepEqual(normalizeQuizletUrl('https://quizlet.com/fi/666063657/quizlet-flash-cards/'), {
+    setId: '666063657', url: 'https://quizlet.com/fi/666063657/quizlet-flash-cards/',
+  });
+  assert.equal(normalizeQuizletUrl('https://quizlet.com/de/karteikarten/lektion-6-250942042').setId,
+    '250942042');
+});
+
+test('translated routes cannot forward arbitrary paths or disguise their numeric ID', () => {
+  for (const input of [
+    'https://quizlet.com/de/karteikarten/einmaleins-250942042/extra',
+    'https://quizlet.com/de/karteikarten/einmaleins-250942042oops',
+    'https://quizlet.com/de/karteikarten/einmaleins-0250942042',
+    'https://quizlet.com/de/karteikarten/einmaleins-0',
+    'https://quizlet.com/de/karteikarten/250942042',
+    'https://quizlet.com/de/karteikarten/ein%2fmal-250942042',
+    'https://quizlet.com/de/karteikarten/ein%5cmal-250942042',
+    'https://quizlet.com/de/karteikarten/ein%00mal-250942042',
+    'https://quizlet.com/de/karteikarten/ein%20mal-250942042',
+    'https://quizlet.com/de/karteikarten/ein%mal-250942042',
+    'https://quizlet.com/de/karte%2fikarten/einmaleins-250942042',
+    'https://quizlet.com/de//karteikarten/einmaleins-250942042',
+    'https://quizlet.com.evil.example/de/karteikarten/einmaleins-250942042',
+  ]) assert.throws(() => normalizeQuizletUrl(input), input);
+});
+
 test('imports only scoped cards in rank order and preserves exact decoded text', () => {
   const redux = state([item(12, 1, 'Second'), item(11, 0, 'First &amp; <tag>', 'Line one\nLine two\tend')]);
   const document = html(redux, { unrelated: { cardSides: item(99, 99).cardSides } }, 'type="application/json" id=\'__NEXT_DATA__\'');

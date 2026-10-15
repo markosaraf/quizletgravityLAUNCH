@@ -22,7 +22,7 @@ const MAX_CARDS = 5_000;
 const MAX_SIDE_LENGTH = 10_000;
 const SET_ID = /^[1-9]\d{0,19}$/;
 
-/** Accept set pages only, normalize to HTTPS, and remove tracking parameters.
+/** Accept set pages, normalize to HTTPS, and remove tracking parameters.
  * URL parsing and an exact hostname allowlist prevent lookalike-domain fetches.
  */
 export function normalizeQuizletUrl(raw: string): { setId: string; url: string } {
@@ -46,8 +46,32 @@ export function normalizeQuizletUrl(raw: string): { setId: string; url: string }
     throw new Error('Use a link to a set on quizlet.com.');
   }
 
+  // New set links put the ID at the end, for example
+  // /de/karteikarten/einmaleins-250942042. The middle segment is translated,
+  // so recognise the route structure rather than maintaining a language list.
+  // Rebuild a numeric set URL: translated/user-supplied path segments never
+  // reach the provider. The returned page must still prove the same set ID.
+  const localized = parsed.pathname.match(
+    /^\/([a-z]{2,3}(?:-[a-z0-9]{2,8})*)\/([^/]+)\/([^/]+)\/?$/i,
+  );
+  if (localized && !/^\d+$/.test(localized[2])) {
+    let resource: string;
+    let slug: string;
+    try {
+      resource = decodeURIComponent(localized[2]);
+      slug = decodeURIComponent(localized[3]);
+    } catch {
+      throw new Error('Use a valid Quizlet flashcard set page link.');
+    }
+    const suffix = slug.match(/^[\p{L}\p{M}\p{N}_-]+-([1-9]\d{0,19})$/u);
+    if (!/^[\p{L}\p{M}]+(?:-[\p{L}\p{M}]+)*$/u.test(resource) || !suffix) {
+      throw new Error('Use the Quizlet flashcard set page link.');
+    }
+    return { setId: suffix[1], url: `https://quizlet.com/${suffix[1]}/` };
+  }
+
   const match = parsed.pathname.match(
-    /^\/(?:([a-z]{2}(?:-[a-z]{2})?)\/)?([1-9]\d{0,19})(?:\/([^/]+))?\/?$/i,
+    /^\/(?:([a-z]{2,3}(?:-[a-z0-9]{2,8})*)\/)?([1-9]\d{0,19})(?:\/([^/]+))?\/?$/i,
   );
   const setId = match?.[2];
   if (!setId) throw new Error('Use the Quizlet flashcard set page link.');
