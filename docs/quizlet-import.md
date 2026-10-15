@@ -53,8 +53,16 @@ The initial URL validator rejected the real German route `/de/karteikarten/einma
 
 Added synthetic route tests cover German, French, Finnish, Spanish, Japanese, Chinese and Arabic characters plus malformed/encoded/extra-path rejection. Actual provider fixtures verified the user’s German Einmaleins set (100 cards) and a real Finnish `/fi/666063657/quizlet-flash-cards/` set (20 cards). Canonical numeric retrieval of the German set was also verified before deployment. Synthetic localized routes test parser generality and are not claimed to be actual Quizlet endpoints.
 
-## Current production release (15 October 2026)
+## Localized-link production release (15 October 2026)
 
 Localized-link support is live at https://www.quizletgravity.com in deployment `dpl_5X1udabZcyGApZaqn4GawLfNmxLN` (https://quizletgravity-launch-rh3ohhp06-markosarafs-projects.vercel.app), built from local source commit `7602602`. The same source passed on preview `dpl_E44ZYonaAFuhjD3YA5JEtMibkWpx` before publication. No Vercel plan upgrade was needed.
 
 The live browser import form accepted the exact reported German link and imported all 100 cards, with every preview field and stored pair matching the API result, then started active gameplay. It also accepted the real Finnish link and displayed all 20 cards correctly. Both requests returned HTTP 200 with zero skipped cards, and no browser page errors occurred. Evidence is saved outside the repository at `/tmp/quizlet-localized-browser-evidence.json`. Regression tests, type checking, targeted lint and the production build passed before deployment.
+
+## Current production release: import tabs (15 October 2026)
+
+Deployment `dpl_BnXgCswPjZX8UnTFoVL8pCnPCKyt` at https://www.quizletgravity.com contains source commit `447f4b7`. Import Quizlet Set is the default and remains selected after importing. All three import methods share one selected-tab state, so only one receives the selected styling. Separator controls and manual paste/file inputs appear only for their respective methods. The shared editable preview table is unchanged.
+
+Type checking, targeted ESLint and the Vercel production build passed. Desktop and mobile browser checks verified exclusive selection, separator visibility, preview editing and persistence, plus manual paste and CSV. These UI checks used a previously captured provider response and spent no Firecrawl credits.
+
+The focused UI checks also passed on the published website at 1280×1000 and 390×844, with no browser errors or horizontal overflow. Live-page evidence: `/tmp/quizlet-tabs-browser-evidence.json`; local manual-input evidence: `/tmp/quizlet-manual-tabs-evidence.json`.
