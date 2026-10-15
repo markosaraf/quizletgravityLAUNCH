@@ -34,3 +34,9 @@ Before this change, production was deployment `dpl_9ezFtikmDt7gDqUXR4hqKBD7jgCc`
 Firecrawl was selected after a real successful raw-HTML retrieval. Browserbase also runs independently of Vercel but has not been proven against these sets in this project. Both are external services; upgrading Vercel alone does not turn a server request into a human browser.
 
 References: https://www.firecrawl.dev/pricing, https://docs.firecrawl.dev/features/scrape, https://docs.firecrawl.dev/rate-limits, https://www.browserbase.com/pricing.
+
+## Deployment handoff (15 October 2026)
+
+The implementation is committed locally on `fix/firecrawl-import` in this worktree. GitHub push was rejected because the local Git credentials identify `natasasdj`; no remote branch was changed. Vercel MCP/CLI deployment attempts were rejected by account permissions, so the live website still uses the previous importer until a deployment succeeds. The key was confirmed as a Vercel Secret and its target includes Production and Preview.
+
+After signing in to the correct Vercel account with `npx vercel@latest login`, verify this folder resolves to project `quizletgravity-launch` in `markosarafs-projects`. Deploy a preview and verify a real import with the production-like configuration before publishing to the production domain. Do not treat a local successful import as a published fix.
