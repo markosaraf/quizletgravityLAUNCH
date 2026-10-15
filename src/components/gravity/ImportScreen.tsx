@@ -25,6 +25,7 @@ const SAMPLE = 'helio-, sun\ngeo-, earth\nbio-, life\nchrom-, color';
 
 const SEPARATOR_ORDER: Separator[] = ['comma', 'semicolon', 'dash'];
 const THEME_ORDER: Theme[] = ['light', 'dark'];
+type ImportTab = 'quizlet' | 'paste' | 'file';
 
 /** Progress-bar animation: elapsed time (ms) → whole-number percentage
  *  0–97. Exponential ease — moves fast at first (the import usually finishes
@@ -42,7 +43,7 @@ const PROGRESS_TICK_MS = 150;
 const PROGRESS_FADE_MS = 700;
 
 export function ImportScreen({ onStart }: Props) {
-  const [tab, setTab] = useState<'paste' | 'file'>('paste');
+  const [tab, setTab] = useState<ImportTab>('quizlet');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export function ImportScreen({ onStart }: Props) {
 
   // Public Quizlet imports use one server request. Keep the returned cards
   // structured: serializing and parsing TSV would split embedded newlines/tabs.
-  const [quizletOpen, setQuizletOpen] = useState(false);
+  const quizletOpen = tab === 'quizlet';
   const [quizletUrl, setQuizletUrl] = useState('');
   const [quizletBusy, setQuizletBusy] = useState(false);
   const [quizletStatus, setQuizletStatus] = useState<string | null>(null);
@@ -116,7 +117,7 @@ export function ImportScreen({ onStart }: Props) {
       setText(importedTerms.map((card) => `${card.word}\t${card.definition}`).join('\n'));
       const title = typeof data?.title === 'string' ? data.title : 'Quizlet set';
       setFileName(title);
-      setTab('paste');
+      setTab('quizlet');
       setError(null);
       const skippedNote =
         typeof data?.skipped === 'number' && data.skipped > 0
@@ -128,7 +129,6 @@ export function ImportScreen({ onStart }: Props) {
       setQuizletProgress(100);
       quizletFadeTimerRef.current = setTimeout(() => {
         setQuizletProgress(null);
-        setQuizletOpen(false);
         quizletFadeTimerRef.current = null;
       }, PROGRESS_FADE_MS);
     },
@@ -202,10 +202,10 @@ export function ImportScreen({ onStart }: Props) {
   // values and preview edits survive separator or tab changes until replaced.
   const [lastSource, setLastSource] = useState<{
     text: string;
-    tab: 'paste' | 'file';
+    tab: ImportTab;
     separator: Separator;
     structuredImport: boolean;
-  }>({ text: '', tab: 'paste', separator: 'comma', structuredImport: false });
+  }>({ text: '', tab: 'quizlet', separator: 'comma', structuredImport: false });
   if (
     lastSource.text !== text ||
     lastSource.tab !== tab ||
@@ -213,7 +213,7 @@ export function ImportScreen({ onStart }: Props) {
     lastSource.structuredImport !== structuredImport
   ) {
     setLastSource({ text, tab, separator, structuredImport });
-    if (!structuredImport) {
+    if (!structuredImport && tab !== 'quizlet') {
       setTerms(
         tab === 'paste'
           ? parsePastedList(text, separator)
@@ -348,16 +348,17 @@ export function ImportScreen({ onStart }: Props) {
               </div>
             </div>
 
-            {/* Option row — "Import Quizlet Set" button sits LEFT of the
-                existing "Paste terms" / "Upload CSV" tabs. */}
+            {/* One selected import method; the editable preview is shared. */}
             <div className="GravityImportTopbar">
               <button
                 type="button"
                 className={`GravityImportQuizlet-button ${quizletOpen ? 'is-open' : ''}`}
                 onClick={() => {
-                  setQuizletOpen((o) => !o);
+                  setTab('quizlet');
                   setQuizletError(null);
+                  setError(null);
                 }}
+                aria-pressed={quizletOpen}
                 aria-expanded={quizletOpen}
                 aria-controls="quizlet-import-panel"
               >
@@ -368,6 +369,7 @@ export function ImportScreen({ onStart }: Props) {
                 <button
                   type="button"
                   className={`GravityImportTab ${tab === 'paste' ? 'is-active' : ''}`}
+                  aria-pressed={tab === 'paste'}
                   onClick={() => {
                     setTab('paste');
                     setError(null);
@@ -378,6 +380,7 @@ export function ImportScreen({ onStart }: Props) {
                 <button
                   type="button"
                   className={`GravityImportTab ${tab === 'file' ? 'is-active' : ''}`}
+                  aria-pressed={tab === 'file'}
                   onClick={() => {
                     setTab('file');
                     setError(null);
@@ -478,24 +481,26 @@ export function ImportScreen({ onStart }: Props) {
               </div>
             ) : null}
 
-            <div className="GravityImportSeparator" role="group" aria-label={STRINGS.import.separator_selector.title}>
-              <span className="GravityImportSeparator-label">
-                {STRINGS.import.separator_selector.title}:
-              </span>
-              <div className="GravityImportSeparator-toggle">
-                {SEPARATOR_ORDER.map((sep) => (
-                  <button
-                    key={sep}
-                    type="button"
-                    className={`GravityImportSeparator-option ${separator === sep ? 'is-selected' : ''}`}
-                    onClick={() => handleSeparatorChange(sep)}
-                    aria-pressed={separator === sep}
-                  >
-                    {STRINGS.import.separator_selector[sep]}
-                  </button>
-                ))}
+            {!quizletOpen ? (
+              <div className="GravityImportSeparator" role="group" aria-label={STRINGS.import.separator_selector.title}>
+                <span className="GravityImportSeparator-label">
+                  {STRINGS.import.separator_selector.title}:
+                </span>
+                <div className="GravityImportSeparator-toggle">
+                  {SEPARATOR_ORDER.map((sep) => (
+                    <button
+                      key={sep}
+                      type="button"
+                      className={`GravityImportSeparator-option ${separator === sep ? 'is-selected' : ''}`}
+                      onClick={() => handleSeparatorChange(sep)}
+                      aria-pressed={separator === sep}
+                    >
+                      {STRINGS.import.separator_selector[sep]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             {tab === 'paste' ? (
               <>
@@ -514,7 +519,7 @@ export function ImportScreen({ onStart }: Props) {
                   {structuredImport ? STRINGS.import.quizlet.imported_hint : STRINGS.import.meta_paste}
                 </p>
               </>
-            ) : (
+            ) : tab === 'file' ? (
               <>
                 <label className="GravityImportFileLabel">
                   <input
@@ -530,7 +535,7 @@ export function ImportScreen({ onStart }: Props) {
                 </label>
                 <p className="GravityImportMeta">{STRINGS.import.file_hint}</p>
               </>
-            )}
+            ) : null}
 
             {visibleTerms.length > 0 ? (
               <div className="GravityImportPreview" aria-live="polite">
