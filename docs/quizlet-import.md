@@ -73,6 +73,12 @@ The reported set `1023956509` announces 987 entries but embeds only 100 in the i
 
 Published source `003b8aa` as production deployment `dpl_32BUqaFghtLr2ycqjfFyA44kfJhZ` at https://www.quizletgravity.com. The exact reported URL passed a real browser import: HTTP 200, 943 pairs and 44 explicitly skipped entries, all preview fields identical to the fetched source pairs, persisted cards intact, and active gameplay reached with no browser errors. Evidence: `/tmp/quizlet-large-production-browser-evidence.json`. All 30 automated tests, type checking, targeted lint and the production build passed (one optional external-fixture test skipped).
 
-## Current production release: app share captions (15 October 2026)
+## App share captions release (15 October 2026)
 
 Source `23615b9` is published as deployment `dpl_BhHq97sY6pCP2FMKnz8eKABdc1Nu` at https://www.quizletgravity.com. The exact copied app message beginning “Studying Voci Mission 6 on Quizlet:” passed through the live import form and API, imported all 62 cards with zero skipped, preserved every preview pair and persisted card, and reached active gameplay without browser errors. Evidence: `/tmp/quizlet-share-caption-browser-evidence.json`. All 31 automated tests passed (one optional fixture skipped), along with type checking, targeted lint and the production build.
+
+## Current production release: automatic preview field height (15 October 2026)
+
+Source `5d021b1` is published in deployment `dpl_8RxQ5qwSp2SMd1wTBBuDCprnxgQ3` at https://www.quizletgravity.com. Preview fields now wrap and automatically grow/shrink to their full text on import, editing, font load and width changes. Paste/CSV previews use the same multiline fields. Batched sizing and one table ResizeObserver avoid per-field resize listeners.
+
+Type checking, targeted ESLint and the production build passed. Browser checks on local and published UI verified all fields fit at 320px/390px mobile and desktop widths, long edits, explicit line breaks, unbroken words, shrinking after deletion, manual paste and 943-card rendering. Captured API responses were used to avoid extra provider requests. Evidence: `/tmp/quizlet-autosize-evidence.json`. No browser errors occurred.
