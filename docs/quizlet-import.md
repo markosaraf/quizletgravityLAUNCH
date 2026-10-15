@@ -59,7 +59,7 @@ Localized-link support is live at https://www.quizletgravity.com in deployment `
 
 The live browser import form accepted the exact reported German link and imported all 100 cards, with every preview field and stored pair matching the API result, then started active gameplay. It also accepted the real Finnish link and displayed all 20 cards correctly. Both requests returned HTTP 200 with zero skipped cards, and no browser page errors occurred. Evidence is saved outside the repository at `/tmp/quizlet-localized-browser-evidence.json`. Regression tests, type checking, targeted lint and the production build passed before deployment.
 
-## Current production release: import tabs (15 October 2026)
+## Import-tabs release (15 October 2026)
 
 Deployment `dpl_BnXgCswPjZX8UnTFoVL8pCnPCKyt` at https://www.quizletgravity.com contains source commit `447f4b7`. Import Quizlet Set is the default and remains selected after importing. All three import methods share one selected-tab state, so only one receives the selected styling. Separator controls and manual paste/file inputs appear only for their respective methods. The shared editable preview table is unchanged.
 
@@ -67,6 +67,8 @@ Type checking, targeted ESLint and the Vercel production build passed. Desktop a
 
 The focused UI checks also passed on the published website at 1280×1000 and 390×844, with no browser errors or horizontal overflow. Live-page evidence: `/tmp/quizlet-tabs-browser-evidence.json`; local manual-input evidence: `/tmp/quizlet-manual-tabs-evidence.json`.
 
-## Large-set pagination fix (15 October 2026)
+## Current production release: large-set pagination (15 October 2026)
 
 The reported set `1023956509` announces 987 entries but embeds only 100 in the initial page. The importer now retrieves the remaining data through public card batches and verifies IDs, ordering, page totals, overlaps and the final unique count. Real retrieval produced 943 playable pairs and explicitly reported 44 entries with an empty side. No missing definitions are guessed. Synthetic regression tests cover 987-card retrieval and truncated, stale, mismatched, repeated and conflicting batches.
+
+Published source `003b8aa` as production deployment `dpl_32BUqaFghtLr2ycqjfFyA44kfJhZ` at https://www.quizletgravity.com. The exact reported URL passed a real browser import: HTTP 200, 943 pairs and 44 explicitly skipped entries, all preview fields identical to the fetched source pairs, persisted cards intact, and active gameplay reached with no browser errors. Evidence: `/tmp/quizlet-large-production-browser-evidence.json`. All 30 automated tests, type checking, targeted lint and the production build passed (one optional external-fixture test skipped).
