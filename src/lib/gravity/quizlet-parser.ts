@@ -86,7 +86,7 @@ export function normalizeQuizletUrl(raw: string): { setId: string; url: string }
     }
     // Study/test/profile routes are not set-page slugs. Also reject encoded
     // separators, whitespace and traversal before forwarding a provider URL.
-    if (!/^(?:[\p{L}\p{N}_-]+-)?flash-cards$/iu.test(decoded)) {
+    if (!/^(?:[\p{L}\p{M}\p{N}_-]+-)?flash-?cards$/iu.test(decoded)) {
       throw new Error('Use the Quizlet flashcard set page link.');
     }
   }

@@ -51,6 +51,10 @@ test('normalizes real set links while preserving locale and slug', () => {
   });
   assert.equal(normalizeQuizletUrl(`quizlet.com/de-de/${SET_ID}/flash-cards`).url,
     `https://quizlet.com/de-de/${SET_ID}/flash-cards/`);
+  assert.equal(normalizeQuizletUrl('https://quizlet.com/917671023/how-to-make-flashcards/').setId,
+    '917671023');
+  assert.equal(normalizeQuizletUrl(`https://quizlet.com/hi/${SET_ID}/शब्द-flash-cards/`).setId, SET_ID);
+  assert.equal(normalizeQuizletUrl(`https://quizlet.com/fi/${SET_ID}/a%CC%88iti-flash-cards/`).setId, SET_ID);
 });
 
 test('rejects spoofed hosts, credentials, paths and protocols before fetching', () => {
