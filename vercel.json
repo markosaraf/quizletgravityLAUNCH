@@ -4,5 +4,8 @@
       "path": "/api/indexnow",
       "schedule": "0 6 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }

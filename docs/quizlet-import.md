@@ -82,3 +82,7 @@ Source `23615b9` is published as deployment `dpl_BhHq97sY6pCP2FMKnz8eKABdc1Nu` a
 Source `5d021b1` is published in deployment `dpl_8RxQ5qwSp2SMd1wTBBuDCprnxgQ3` at https://www.quizletgravity.com. Preview fields now wrap and automatically grow/shrink to their full text on import, editing, font load and width changes. Paste/CSV previews use the same multiline fields. Batched sizing and one table ResizeObserver avoid per-field resize listeners.
 
 Type checking, targeted ESLint and the production build passed. Browser checks on local and published UI verified all fields fit at 320px/390px mobile and desktop widths, long edits, explicit line breaks, unbroken words, shrinking after deletion, manual paste and 943-card rendering. Captured API responses were used to avoid extra provider requests. Evidence: `/tmp/quizlet-autosize-evidence.json`. No browser errors occurred.
+
+## GitHub source sync — 15 October 2026
+
+GitHub authentication has been corrected to markosaraf. The active source folder remains quizletgravity-firecrawl. Git auto-deployments are disabled through vercel.json so syncing source does not replace the current production deployment. Commit and push reviewed changes to GitHub before explicitly publishing the same source to Vercel. Environment secrets remain outside source control.
