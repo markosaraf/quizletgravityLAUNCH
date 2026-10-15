@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   loadImportedSet,
   loadStoredSeparator,
@@ -50,6 +50,45 @@ export function ImportScreen({ onStart }: Props) {
   // Structured cards remain intact until the user replaces the pasted text/file.
   const [structuredImport, setStructuredImport] = useState(false);
   const [terms, setTerms] = useState<GravityTerm[]>([]);
+
+  const previewRef = useRef<HTMLDivElement>(null);
+  const resizePreviewFields = useCallback(() => {
+    const fields = Array.from(previewRef.current?.querySelectorAll('textarea') ?? []);
+    // Batch writes and reads so large sets do not force layout for each card.
+    fields.forEach((field) => { field.style.height = 'auto'; });
+    const heights = fields.map((field) => field.scrollHeight + 2); // 1px borders
+    fields.forEach((field, index) => { field.style.height = `${heights[index]}px`; });
+  }, []);
+
+  useLayoutEffect(() => {
+    resizePreviewFields();
+  }, [terms, resizePreviewFields]);
+
+  useLayoutEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    let width = preview.getBoundingClientRect().width;
+    let frame = 0;
+    let active = true;
+    const scheduleResize = () => {
+      if (!active) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(resizePreviewFields);
+    };
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        scheduleResize();
+      }
+    });
+    observer.observe(preview);
+    void document.fonts.ready.then(scheduleResize);
+    return () => {
+      active = false;
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [terms.length, resizePreviewFields]);
 
   // User-selected separator (comma / semicolon / dash). Persisted to
   // localStorage so it survives reloads. Defaults to 'comma' (most common CSV
@@ -564,50 +603,26 @@ export function ImportScreen({ onStart }: Props) {
                   </span>
                   <span className="GravityImportPreview-columnLabels-spacer--end" />
                 </div>
-                <div className="GravityImportPreview-table">
+                <div className="GravityImportPreview-table" ref={previewRef}>
                   {visibleTerms.map((t, i) => (
                     <div key={t.id} className="GravityImportPreview-row">
                       <span className="GravityImportPreview-index">{i + 1}</span>
-                      {structuredImport ? (
-                        <textarea
-                          className="GravityImportPreview-input GravityImportPreview-input--term"
-                          rows={Math.min(4, t.word.split(/\r?\n/).length)}
-                          style={{ resize: 'vertical' }}
-                          value={t.word}
-                          placeholder="term"
-                          onChange={(e) => updateTermWord(t.id, e.target.value)}
-                          aria-label={`Row ${i + 1} term`}
-                        />
-                      ) : (
-                        <input
-                          className="GravityImportPreview-input GravityImportPreview-input--term"
-                          type="text"
-                          value={t.word}
-                          placeholder="term"
-                          onChange={(e) => updateTermWord(t.id, e.target.value)}
-                          aria-label={`Row ${i + 1} term`}
-                        />
-                      )}
-                      {structuredImport ? (
-                        <textarea
-                          className="GravityImportPreview-input GravityImportPreview-input--definition"
-                          rows={Math.min(4, t.definition.split(/\r?\n/).length)}
-                          style={{ resize: 'vertical' }}
-                          value={t.definition}
-                          placeholder="definition"
-                          onChange={(e) => updateTermDefinition(t.id, e.target.value)}
-                          aria-label={`Row ${i + 1} definition`}
-                        />
-                      ) : (
-                        <input
-                          className="GravityImportPreview-input GravityImportPreview-input--definition"
-                          type="text"
-                          value={t.definition}
-                          placeholder="definition"
-                          onChange={(e) => updateTermDefinition(t.id, e.target.value)}
-                          aria-label={`Row ${i + 1} definition`}
-                        />
-                      )}
+                      <textarea
+                        className="GravityImportPreview-input GravityImportPreview-input--term"
+                        rows={1}
+                        value={t.word}
+                        placeholder="term"
+                        onChange={(e) => updateTermWord(t.id, e.target.value)}
+                        aria-label={`Row ${i + 1} term`}
+                      />
+                      <textarea
+                        className="GravityImportPreview-input GravityImportPreview-input--definition"
+                        rows={1}
+                        value={t.definition}
+                        placeholder="definition"
+                        onChange={(e) => updateTermDefinition(t.id, e.target.value)}
+                        aria-label={`Row ${i + 1} definition`}
+                      />
                       <button
                         type="button"
                         className={`GravityImportPreview-starRow ${t.starred ? 'is-starred' : ''}`}

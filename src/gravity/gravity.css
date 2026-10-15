@@ -1600,6 +1600,11 @@
   min-width: 0;
   padding: 0.3rem 0.5rem;
   transition: border-color 0.15s, background 0.15s;
+  box-sizing: border-box;
+  line-height: 1.5;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  resize: none;
 }
 
 .GravityImportPreview-input:focus {
