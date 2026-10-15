@@ -5,14 +5,14 @@ import { fetchQuizletSet, QuizletImportError } from '../src/lib/gravity/quizlet.
 const SET_ID = '123456789';
 const SET_URL = `https://quizlet.com/ch/${SET_ID}/example-flash-cards/`;
 
-function payload() {
-  const set = { id: Number(SET_ID), numTerms: 2, title: 'Synthetic provider fixture' };
+function payload(total = 2, embedded = total) {
+  const set = { id: Number(SET_ID), numTerms: total, title: 'Synthetic provider fixture' };
   const redux = {
     setPage: { set },
     studyModesCommon: { studiableData: {
       studiableContainer: set,
       studiableContainerType: 1,
-      studiableItems: [0, 1].map((rank) => ({
+      studiableItems: Array.from({ length: embedded }, (_, rank) => ({
         id: rank + 1,
         rank,
         isDeleted: false,
@@ -171,4 +171,69 @@ test('provider request is aborted within the server function time budget', async
   context.mock.timers.tick(50_000);
   await rejection;
   assert.equal(signal?.aborted, true);
+});
+
+function paginatedFixtures(total = 987) {
+  const initial = payload(total, 100);
+  const complete = payload(total);
+  const pageState = JSON.parse(complete.data.rawHtml.match(/<script[^>]*>([\s\S]*)<\/script>/)![1]);
+  const all = JSON.parse(pageState.props.pageProps.dehydratedReduxStateKey).studyModesCommon.studiableData.studiableItems;
+  const pages = Array.from({ length: Math.ceil(total / 500) }, (_, index) => ({
+    responses: [{
+      models: { studiableItem: all.slice(index * 500, (index + 1) * 500) },
+      paging: { total, page: index + 1, perPage: 500, token: 'synthetic-page-token' },
+    }],
+  }));
+  return { initial, pages };
+}
+
+test('loads all 987 cards from bounded public pages after an initial 100-card response', async () => {
+  const { initial, pages } = paginatedFixtures();
+  let calls = 0;
+  let signal: AbortSignal | null | undefined;
+  const result = await fetchQuizletSet(SET_URL, {
+    apiKey: 'test-token', allowKeyless: false,
+    fetchImpl: async (endpoint, init) => {
+      assert.equal(endpoint, 'https://api.firecrawl.dev/v2/scrape');
+      const source = new URL(JSON.parse(String(init?.body)).url);
+      if (calls++ === 0) { signal = init?.signal; return Response.json(initial); }
+      assert.equal(init?.signal, signal);
+      assert.equal(source.origin, 'https://quizlet.com');
+      assert.equal(source.pathname, '/webapi/3.4/studiable-item-documents');
+      assert.equal(source.searchParams.get('filters[studiableContainerId]'), SET_ID);
+      assert.equal(source.searchParams.get('filters[studiableContainerType]'), '1');
+      assert.equal(source.searchParams.get('perPage'), '500');
+      assert.equal(source.searchParams.get('page'), String(calls - 1));
+      assert.equal(source.searchParams.get('pagingToken'), calls === 2 ? null : 'synthetic-page-token');
+      return Response.json({ success: true, data: { metadata: { statusCode: 200 }, rawHtml: JSON.stringify(pages[calls - 2]) } });
+    },
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.cards.length, 987);
+  assert.equal(result.skipped, 0);
+  assert.deepEqual(result.cards, Array.from({ length: 987 }, (_, rank) => ({ term: `Word ${rank}`, definition: `Meaning ${rank}` })));
+});
+
+test('rejects truncated, stale, foreign, repeated or conflicting card batches', async () => {
+  const mutations = [
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[1].responses[0].models.studiableItem.pop(); },
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[0].responses[0].paging.total = 986; },
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[0].responses[0].paging.token = ''; },
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[1].responses[0].paging.page = 1; },
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[0].responses[0].models.studiableItem[0].studiableContainerId = 999999; },
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[1].responses[0].models.studiableItem[0] = pages[0].responses[0].models.studiableItem[0]; },
+    (pages: ReturnType<typeof paginatedFixtures>['pages']) => { pages[0].responses[0].models.studiableItem[0].cardSides[0].media[0].plainText = 'Changed since initial page'; },
+  ];
+  for (const mutate of mutations) {
+    const { initial, pages } = paginatedFixtures();
+    mutate(pages);
+    let calls = 0;
+    await assert.rejects(fetchQuizletSet(SET_URL, {
+      apiKey: 'test-token', allowKeyless: false,
+      fetchImpl: async () => Response.json(calls++ === 0 ? initial : {
+        success: true, data: { metadata: { statusCode: 200 }, rawHtml: JSON.stringify(pages[calls - 2]) },
+      }),
+    }), isImportError('incomplete_set_pages', 422));
+    assert.ok(calls <= 3);
+  }
 });

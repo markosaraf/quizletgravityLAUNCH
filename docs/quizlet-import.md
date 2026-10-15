@@ -2,7 +2,7 @@
 
 ## Request path
 
-The browser sends `POST /api/import-quizlet` with `{ "url": "https://quizlet.com/..." }`. The server accepts Quizlet set-page URLs, strips query strings/fragments, and requests raw HTML from Firecrawl v2. Legacy ID-first links retain their locale/slug. Translated links such as `/de/karteikarten/einmaleins-250942042` are recognised by the locale/resource/slug-ID structure and rebuilt as `https://quizlet.com/250942042/`. Locale and translated resource names are not restricted to a fixed language list. This handles Finnish ID-first links as well as translated and non-Latin URL structures without forwarding arbitrary path segments. It does not forward cookies, login credentials or arbitrary destinations. The former proxy, Jina/ZAI, internal web API and archive creation/lookup paths have been removed. The legacy GET endpoint remains for already-open tabs.
+The browser sends `POST /api/import-quizlet` with `{ "url": "https://quizlet.com/..." }`. The server accepts Quizlet set-page URLs, strips query strings/fragments, and requests raw HTML from Firecrawl v2. Legacy ID-first links retain their locale/slug. Translated links such as `/de/karteikarten/einmaleins-250942042` are recognised by the locale/resource/slug-ID structure and rebuilt as `https://quizlet.com/250942042/`. Locale and translated resource names are not restricted to a fixed language list. This handles Finnish ID-first links as well as translated and non-Latin URL structures without forwarding arbitrary path segments. It does not forward cookies, login credentials or arbitrary destinations. The former direct proxy, Jina/ZAI and archive creation/lookup paths have been removed. When a validated public page embeds fewer cards than it announces, Firecrawl retrieves Quizlet’s public card batches (500 entries per page) from a server-constructed URL. All batches are checked against the original set identity and count before any result is returned. The legacy GET endpoint remains for already-open tabs.
 
 Parsing is deterministic: it reads the requested set’s embedded JSON, verifies the set/container/item identities and expected active item count, and orders cards by rank. Partial or unsupported pages fail rather than silently importing fewer cards. Cards without text on both sides are counted as skipped and reported. Distinct source IDs with equal text remain distinct. Embedded newlines/tabs are preserved through preview, separator changes and game setup.
 
@@ -10,7 +10,7 @@ Parsing is deterministic: it reads the requested set’s embedded JSON, verifies
 
 - Vercel Hobby hosts the small API function. Firecrawl handles retrieval externally.
 - `FIRECRAWL_API_KEY` is server-only and required in production. Add it as a Vercel Secret in Production and Preview, then redeploy.
-- The provider timeout is 45 seconds; an outer abort is 50 seconds within the route’s 60-second limit. No retry chain runs.
+- The provider timeout is 45 seconds; an outer abort is 50 seconds within the route’s 60-second limit. No retry chain runs. Large-set pagination shares that same overall deadline and is bounded to ten card batches (the existing 5,000-card limit).
 - Complete results are cached for one hour by numeric set ID, independent of tracking parameters or slug.
 - A single process merges concurrent requests for the same set, permits two distinct imports concurrently, and limits each client to ten requests per minute. These guards are instance-local, not a global distributed rate limit.
 - Provider quotas apply across instances. Keep the Firecrawl free plan or configure account spending/credit limits before enabling paid usage. Do not enable automatic paid top-ups unintentionally.
@@ -66,3 +66,7 @@ Deployment `dpl_BnXgCswPjZX8UnTFoVL8pCnPCKyt` at https://www.quizletgravity.com 
 Type checking, targeted ESLint and the Vercel production build passed. Desktop and mobile browser checks verified exclusive selection, separator visibility, preview editing and persistence, plus manual paste and CSV. These UI checks used a previously captured provider response and spent no Firecrawl credits.
 
 The focused UI checks also passed on the published website at 1280×1000 and 390×844, with no browser errors or horizontal overflow. Live-page evidence: `/tmp/quizlet-tabs-browser-evidence.json`; local manual-input evidence: `/tmp/quizlet-manual-tabs-evidence.json`.
+
+## Large-set pagination fix (15 October 2026)
+
+The reported set `1023956509` announces 987 entries but embeds only 100 in the initial page. The importer now retrieves the remaining data through public card batches and verifies IDs, ordering, page totals, overlaps and the final unique count. Real retrieval produced 943 playable pairs and explicitly reported 44 entries with an empty side. No missing definitions are guessed. Synthetic regression tests cover 987-card retrieval and truncated, stale, mismatched, repeated and conflicting batches.

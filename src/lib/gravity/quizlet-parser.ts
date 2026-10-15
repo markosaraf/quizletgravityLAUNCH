@@ -21,6 +21,17 @@ const MAX_HTML_BYTES = 10 * 1_024 * 1_024;
 const MAX_CARDS = 5_000;
 const MAX_SIDE_LENGTH = 10_000;
 const SET_ID = /^[1-9]\d{0,19}$/;
+export const QUIZLET_PAGE_SIZE = 500;
+
+/** Only a validated public set with fewer cards than announced can paginate. */
+export class IncompleteQuizletSetError extends Error {
+  total: number;
+  constructor(total: number) {
+    super('Quizlet returned an incomplete set. More card pages are needed.');
+    this.name = 'IncompleteQuizletSetError';
+    this.total = total;
+  }
+}
 
 /** Accept set pages, normalize to HTTPS, and remove tracking parameters.
  * URL parsing and an exact hostname allowlist prevent lookalike-domain fetches.
@@ -185,7 +196,7 @@ function itemCard(item: JsonObject): QuizletCard {
  * refer to unique active source items before unsupported nontext cards are
  * skipped. Distinct IDs with equal text remain distinct source cards.
  */
-export function parseQuizletHtml(html: string, url: string, setId: string): QuizletImportResult {
+export function parseQuizletHtml(html: string, url: string, setId: string, additionalItems: unknown[] = []): QuizletImportResult {
   const normalized = normalizeQuizletUrl(url);
   if (!SET_ID.test(setId) || normalized.setId !== setId) {
     throw new Error('The requested Quizlet set identity is inconsistent.');
@@ -219,14 +230,15 @@ export function parseQuizletHtml(html: string, url: string, setId: string): Quiz
   if (data.studiableContainerType !== 1 || expectedCount(container.numTerms) !== total) {
     throw new Error('Quizlet returned inconsistent set metadata.');
   }
-  if (!Array.isArray(data.studiableItems) || data.studiableItems.length > MAX_CARDS * 2) {
+  if (!Array.isArray(data.studiableItems) || !Array.isArray(additionalItems) ||
+      data.studiableItems.length + additionalItems.length > MAX_CARDS * 2) {
     throw new Error('Quizlet returned unsupported card data.');
   }
 
   const active = new Map<string, { rank: number; card: QuizletCard }>();
   const deleted = new Set<string>();
   const ranks = new Set<number>();
-  for (const value of data.studiableItems) {
+  for (const value of [...data.studiableItems, ...additionalItems]) {
     const item = object(value, 'card');
     requireIdentity(item.studiableContainerId, setId);
     const id = identifier(item.id);
@@ -256,12 +268,39 @@ export function parseQuizletHtml(html: string, url: string, setId: string): Quiz
     active.set(id, { rank, card });
   }
 
-  if (active.size !== total) {
-    throw new Error('Quizlet returned an incomplete set. Paste or upload the full set instead.');
-  }
+  if (active.size < total) throw new IncompleteQuizletSetError(total);
+  if (active.size > total) throw new Error('Quizlet returned an incomplete or inconsistent set count.');
   const ordered = [...active.values()].sort((left, right) => left.rank - right.rank);
   const cards = ordered.map(({ card }) => card).filter(({ term, definition }) => term && definition);
   const skipped = total - cards.length;
   if (cards.length < 2) throw new Error('The set needs at least two cards with text on both sides.');
   return { title: set.title.trim(), url: normalized.url, setId, cards, skipped };
+}
+
+/** Validate the public batch response before following its pagination token. */
+export function parseQuizletItemPage(raw: string, setId: string, total: number, page: number) {
+  const payload = object(JSON.parse(raw), 'card page');
+  if (!Array.isArray(payload.responses) || payload.responses.length !== 1) {
+    throw new Error('Quizlet returned unsupported card pages.');
+  }
+  const response = object(payload.responses[0], 'card page');
+  const paging = object(response.paging, 'card paging');
+  if (expectedCount(paging.total) !== total || paging.page !== page || paging.perPage !== QUIZLET_PAGE_SIZE) {
+    throw new Error('Quizlet returned inconsistent card paging.');
+  }
+  const items = object(response.models, 'card models').studiableItem;
+  const count = Math.min(QUIZLET_PAGE_SIZE, total - (page - 1) * QUIZLET_PAGE_SIZE);
+  if (!Array.isArray(items) || count < 1 || items.length !== count) {
+    throw new Error('Quizlet returned an incomplete card page.');
+  }
+  for (const value of items) {
+    const item = object(value, 'card');
+    requireIdentity(item.studiableContainerId, setId);
+    if (item.studiableContainerType !== 1) throw new Error('Quizlet returned a different card type.');
+  }
+  const hasMore = page * QUIZLET_PAGE_SIZE < total;
+  if (hasMore && (typeof paging.token !== 'string' || !paging.token || paging.token.length > 2048)) {
+    throw new Error('Quizlet did not provide a valid next-page token.');
+  }
+  return { items, nextToken: hasMore ? paging.token as string : null };
 }

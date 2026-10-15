@@ -1,5 +1,5 @@
 /** Public Quizlet imports through Firecrawl. No relays, archives or AI-generated cards. */
-import { normalizeQuizletUrl, parseQuizletHtml } from './quizlet-parser.ts';
+import { IncompleteQuizletSetError, normalizeQuizletUrl, parseQuizletHtml, parseQuizletItemPage, QUIZLET_PAGE_SIZE } from './quizlet-parser.ts';
 import type { QuizletImportResult } from './quizlet-parser.ts';
 
 export class QuizletImportError extends Error {
@@ -57,32 +57,66 @@ export async function fetchQuizletSet(rawUrl: string, options: FetchOptions = {}
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 50_000);
   try {
-    const response = await (options.fetchImpl ?? fetch)('https://api.firecrawl.dev/v2/scrape', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-      body: JSON.stringify({ url, formats: ['rawHtml'], onlyMainContent: false, timeout: 45_000, maxAge: 3_600_000 }),
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-    if (response.status === 429 || response.status === 402) {
-      await response.body?.cancel();
-      throw new QuizletImportError('provider_limit', 429,
-        'Link imports have reached their current limit. Please try later, or paste your terms below.');
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new QuizletImportError(`provider_http_${response.status}`, 502, UNAVAILABLE);
-    }
-    const payload = JSON.parse(await readResponse(response));
-    if (payload?.success !== true || payload?.data?.metadata?.statusCode !== 200 ||
-        payload?.data?.metadata?.error || typeof payload?.data?.rawHtml !== 'string') {
-      throw new QuizletImportError('upstream_page_unavailable', 502, UNAVAILABLE);
-    }
+    const scrape = async (sourceUrl: string): Promise<string> => {
+      const response = await (options.fetchImpl ?? fetch)('https://api.firecrawl.dev/v2/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+        body: JSON.stringify({ url: sourceUrl, formats: ['rawHtml'], onlyMainContent: false, timeout: 45_000, maxAge: 3_600_000 }),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      if (response.status === 429 || response.status === 402) {
+        await response.body?.cancel();
+        throw new QuizletImportError('provider_limit', 429,
+          'Link imports have reached their current limit. Please try later, or paste your terms below.');
+      }
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new QuizletImportError(`provider_http_${response.status}`, 502, UNAVAILABLE);
+      }
+      const payload = JSON.parse(await readResponse(response));
+      if (payload?.success !== true || payload?.data?.metadata?.statusCode !== 200 ||
+          payload?.data?.metadata?.error || typeof payload?.data?.rawHtml !== 'string') {
+        throw new QuizletImportError('upstream_page_unavailable', 502, UNAVAILABLE);
+      }
+      return payload.data.rawHtml;
+    };
+    const html = await scrape(url);
     let result: QuizletImportResult;
     try {
-      result = parseQuizletHtml(payload.data.rawHtml, url, setId);
-    } catch {
-      throw new QuizletImportError('incomplete_or_unsupported_set', 422, UNAVAILABLE);
+      result = parseQuizletHtml(html, url, setId);
+    } catch (error) {
+      if (!(error instanceof IncompleteQuizletSetError)) {
+        throw new QuizletImportError('incomplete_or_unsupported_set', 422, UNAVAILABLE);
+      }
+      // Quizlet initially embeds only 100 cards in large sets. Fetch its public
+      // card pages through the same provider, within the original time budget.
+      // Build URLs ourselves; neither users nor upstream data choose a host.
+      const additionalItems: unknown[] = [];
+      let token: string | null = null;
+      try {
+        const pages = Math.ceil(error.total / QUIZLET_PAGE_SIZE);
+        for (let page = 1; page <= pages; page += 1) {
+          const endpoint = new URL('https://quizlet.com/webapi/3.4/studiable-item-documents');
+          endpoint.search = new URLSearchParams({
+            ...(token ? { pagingToken: token } : {}),
+            page: String(page),
+            perPage: String(QUIZLET_PAGE_SIZE),
+            'filters[studiableContainerId]': setId,
+            'filters[studiableContainerType]': '1',
+          }).toString();
+          const batch = parseQuizletItemPage(await scrape(endpoint.href), setId, error.total, page);
+          additionalItems.push(...batch.items);
+          token = batch.nextToken;
+        }
+        // This rechecks every ID, rank, pair and the final unique count,
+        // including consistency with the initial page's overlapping cards.
+        result = parseQuizletHtml(html, url, setId, additionalItems);
+      } catch (paginationError) {
+        if (controller.signal.aborted || paginationError instanceof QuizletImportError) throw paginationError;
+        throw new QuizletImportError('incomplete_set_pages', 422,
+          'Quizlet returned only part of this set. Please try again, or paste or upload the full set.');
+      }
     }
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 1_000_000) {
       throw new QuizletImportError('set_too_large', 422,
