@@ -31,15 +31,6 @@ export function SplashView({ onStart }: { onStart: () => void }) {
       <p className="GravitySplashView-description">
         {STRINGS.splash.description}
       </p>
-      <p
-        className="GravitySplashView-description"
-        style={{ color: '#ff725b', marginTop: '0.75rem' }}
-      >
-        {STRINGS.splash.warning_red}
-      </p>
-      <p className="GravitySplashView-description">
-        {STRINGS.splash.warning_miss}
-      </p>
       <button
         className="UIButton UIButton--hero"
         aria-label={STRINGS.splash.start_button}

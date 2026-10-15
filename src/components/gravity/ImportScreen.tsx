@@ -13,6 +13,7 @@ import {
   saveStoredTheme,
 } from '@/lib/gravity/parse';
 import type { Separator, Theme } from '@/lib/gravity/parse';
+import { importedCardsToTerms } from '@/lib/gravity/import-cards';
 import { STRINGS, format } from '@/lib/gravity/strings';
 import type { GravitySet, GravityTerm } from '@/lib/gravity/types';
 
@@ -28,7 +29,7 @@ const THEME_ORDER: Theme[] = ['light', 'dark'];
 /** Progress-bar animation: elapsed time (ms) → whole-number percentage
  *  0–97. Exponential ease — moves fast at first (the import usually finishes
  *  in 1–5 s) and creeps slowly later, so the bar never looks frozen during a
- *  long retry chain. 100% is only ever shown on real completion. */
+ *  request. 100% is only ever shown on real completion. */
 const progressAfterMs = (elapsedMs: number): number =>
   Math.round(Math.min(97, 100 * (1 - Math.exp(-elapsedMs / 11_000))));
 
@@ -40,51 +41,14 @@ const PROGRESS_TICK_MS = 150;
 /** How long a completed (100%) bar stays on screen before hiding. */
 const PROGRESS_FADE_MS = 700;
 
-/* ── archive.ph fallback flow constants ────────────────────────────────── */
-
-/** The popup we open on archive.ph pre-fills the save form; the user keeps
- *  "My url is alive and I want to archive its content" selected and clicks
- *  Save with their own browser (passing any security check themselves). */
-const archivePopupUrl = (quizletUrl: string): string =>
-  `https://archive.ph/?url=${encodeURIComponent(quizletUrl.trim())}`;
-
-/** Poll cadence + budget for the "snapshot being saved" wait. archive.ph
- *  rendering takes ~1–3 minutes; 25 checks × 12 s ≈ 5 minutes of patience. */
-const ARCHIVE_POLL_INTERVAL_MS = 12_000;
-const ARCHIVE_POLL_MAX_CHECKS = 25;
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/** Copy for the archive.ph fallback panel (kept local so no other file has
- *  to change for this feature). */
-const ARCHIVE_UI = {
-  offer:
-    'Quizlet is blocking automatic imports right now — but the set can still be imported through archive.ph, which keeps a readable copy of the page.',
-  start_button: 'Import via archive.ph',
-  manual_button: 'I already have an archive link',
-  waiting_hint:
-    'In the archive.ph window that just opened, keep "My url is alive and I want to archive its content" selected and click Save. Archiving usually takes 1–3 minutes; this box imports the set automatically the moment the snapshot is ready.',
-  waiting_status: (checks: number) =>
-    `Waiting for the archive.ph snapshot… (checked ${checks}× — usually ready within 1–3 minutes)`,
-  waiting_cancel: 'Cancel',
-  timeout:
-    'No snapshot appeared after 5 minutes. If archive.ph finished saving in your browser, paste the archive.ph link from its address bar below — that always works.',
-  blocked:
-    'archive.ph is showing a security check to our server. Save the page in the archive.ph window (your browser passes the check), then paste the archive.ph link you land on below.',
-  manual_placeholder: 'https://archive.ph/…',
-  manual_label: 'Archive link',
-  manual_hint:
-    'Paste the archive.ph link of the saved set (the page you land on after saving) — it imports directly.',
-  manual_import_button: 'Import from archive',
-  manual_busy: 'Importing…',
-  via_note: ' (via archive.ph)',
-} as const;
-
 export function ImportScreen({ onStart }: Props) {
   const [tab, setTab] = useState<'paste' | 'file'>('paste');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Structured cards remain intact until the user replaces the pasted text/file.
+  const [structuredImport, setStructuredImport] = useState(false);
+  const [terms, setTerms] = useState<GravityTerm[]>([]);
 
   // User-selected separator (comma / semicolon / dash). Persisted to
   // localStorage so it survives reloads. Defaults to 'comma' (most common CSV
@@ -120,73 +84,38 @@ export function ImportScreen({ onStart }: Props) {
     }
   }, []);
 
-  // Quizlet set import — one-click fetch of a public Quizlet set's terms &
-  // definitions through the site's own /api/import-quizlet route (browsers
-  // can't request quizlet.com directly: Quizlet sends no CORS headers, so
-  // the fetch happens server-side). On success the cards are poured into
-  // the textarea as tab-separated lines so they flow through the exact
-  // same parse → preview-table pipeline as pasted terms, fully editable.
-  //
-  // The route now ALSO accepts direct archive.ph snapshot links, so the
-  // same input + Import button handles "I already archived it" links.
-  //
-  // While the request is in flight an animated progress bar is shown — the
-  // server-side fetch can take anywhere from ~1 s (cache hit / fast path)
-  // to ~55 s (long retry chain), so without it the UI looks dead. The bar
-  // is driven by elapsed time, snaps to 100% on completion and hides again.
-  // Errors are always rendered with generic, user-facing wording — the
-  // server response itself no longer contains any internal detail either.
+  // Public Quizlet imports use one server request. Keep the returned cards
+  // structured: serializing and parsing TSV would split embedded newlines/tabs.
   const [quizletOpen, setQuizletOpen] = useState(false);
   const [quizletUrl, setQuizletUrl] = useState('');
   const [quizletBusy, setQuizletBusy] = useState(false);
   const [quizletStatus, setQuizletStatus] = useState<string | null>(null);
   const [quizletError, setQuizletError] = useState<string | null>(null);
-  /** null = idle (no bar); 0–100 while importing; 100 briefly on success. */
   const [quizletProgress, setQuizletProgress] = useState<number | null>(null);
+  const quizletRequestRef = useRef<AbortController | null>(null);
+  const quizletAbortTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quizletTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const quizletFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── archive.ph fallback state ──────────────────────────────────────────
-  /** Show the fallback offer (set after a failed normal import). */
-  const [archiveOffer, setArchiveOffer] = useState(false);
-  /** idle → offer buttons; waiting → polling in progress; manual → paste-an-
-   *  archive-link input is shown. */
-  const [archiveFlow, setArchiveFlow] = useState<'idle' | 'waiting' | 'manual'>('idle');
-  const [archiveChecks, setArchiveChecks] = useState(0);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
-  const [manualUrl, setManualUrl] = useState('');
-  const [manualBusy, setManualBusy] = useState(false);
-  /** Set true to stop the polling loop (Cancel button / panel closed /
-   *  component unmount / a new import started). */
-  const archiveAbortRef = useRef(false);
-  useEffect(() => {
-    return () => {
-      archiveAbortRef.current = true;
-    };
+  useEffect(() => () => {
+    quizletRequestRef.current?.abort();
+    quizletRequestRef.current = null;
+    if (quizletAbortTimerRef.current !== null) clearTimeout(quizletAbortTimerRef.current);
+    if (quizletTickerRef.current !== null) clearInterval(quizletTickerRef.current);
+    if (quizletFadeTimerRef.current !== null) clearTimeout(quizletFadeTimerRef.current);
   }, []);
 
-  const resetArchiveFlow = useCallback(() => {
-    archiveAbortRef.current = true;
-    setArchiveFlow('idle');
-    setArchiveChecks(0);
-    setArchiveError(null);
-    setManualUrl('');
-    setManualBusy(false);
-  }, []);
-
-  /** Shared success path for every import route (direct / archive poll /
-   *  manual archive link): pour the cards into the textarea, adopt the set
-   *  title, flash the progress bar, show the status line. */
   const applyQuizletResult = useCallback(
-    (data: { title?: unknown; cards?: unknown; skipped?: unknown }, viaNote = '') => {
-      const cards = (data?.cards ?? []) as Array<{ term: string; definition: string }>;
-      if (cards.length < 2) throw new Error(STRINGS.import.error_single);
-      // Tab-separated on purpose: the paste parser always tries tab FIRST
-      // (see splitPastedLine), so pairs split correctly no matter which
-      // separator is selected — and commas inside terms/definitions
-      // ("le client, la cliente") stay safe.
-      setText(cards.map((c) => `${c.term}\t${c.definition}`).join('\n'));
-      // Reuse the existing "file name" slot so the Quizlet set title becomes
-      // the study-set title on Start.
-      setFileName(typeof data?.title === 'string' ? data.title : 'Quizlet set');
+    (data: { title?: unknown; cards?: unknown; skipped?: unknown }) => {
+      const importedTerms = importedCardsToTerms(data?.cards);
+      if (importedTerms === null) throw new Error(STRINGS.import.quizlet.error_generic);
+      if (importedTerms.length < 2) throw new Error(STRINGS.import.error_single);
+      setStructuredImport(true);
+      setTerms(importedTerms);
+      // This text is only an editable view; it is parsed after an explicit edit.
+      setText(importedTerms.map((card) => `${card.word}\t${card.definition}`).join('\n'));
+      const title = typeof data?.title === 'string' ? data.title : 'Quizlet set';
+      setFileName(title);
       setTab('paste');
       setError(null);
       const skippedNote =
@@ -194,48 +123,53 @@ export function ImportScreen({ onStart }: Props) {
           ? format(STRINGS.import.quizlet.skipped_note, { count: data.skipped })
           : '';
       setQuizletStatus(
-        format(STRINGS.import.quizlet.success, {
-          count: cards.length,
-          title: typeof data?.title === 'string' ? data.title : 'Quizlet set',
-        }) + skippedNote + viaNote,
+        format(STRINGS.import.quizlet.success, { count: importedTerms.length, title }) + skippedNote,
       );
-      // Flash the completed bar at 100% ("Done!"), then hide it and close
-      // the panel — the filled-in preview table below is the real
-      // confirmation.
       setQuizletProgress(100);
-      setTimeout(() => {
+      quizletFadeTimerRef.current = setTimeout(() => {
         setQuizletProgress(null);
         setQuizletOpen(false);
+        quizletFadeTimerRef.current = null;
       }, PROGRESS_FADE_MS);
     },
     [],
   );
 
   const handleQuizletImport = useCallback(async () => {
+    // A ref closes the double-click/Enter gap before React updates disabled.
+    if (quizletRequestRef.current !== null) return;
     const link = quizletUrl.trim();
     if (!link) {
       setQuizletError(STRINGS.import.quizlet.error_no_url);
       return;
     }
-    resetArchiveFlow();
-    setArchiveOffer(false);
+    const controller = new AbortController();
+    quizletRequestRef.current = controller;
+    if (quizletFadeTimerRef.current !== null) {
+      clearTimeout(quizletFadeTimerRef.current);
+      quizletFadeTimerRef.current = null;
+    }
     setQuizletBusy(true);
     setQuizletError(null);
     setQuizletStatus(null);
     setQuizletProgress(0);
-
-    const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), IMPORT_ABORT_MS);
+    quizletAbortTimerRef.current = abortTimer;
     const startedAt = Date.now();
     const ticker = setInterval(() => {
       setQuizletProgress(progressAfterMs(Date.now() - startedAt));
     }, PROGRESS_TICK_MS);
+    quizletTickerRef.current = ticker;
 
     try {
-      const res = await fetch(`/api/import-quizlet?url=${encodeURIComponent(link)}`, {
+      const res = await fetch('/api/import-quizlet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: link }),
         signal: controller.signal,
       });
       const data = await res.json();
+      if (quizletRequestRef.current !== controller) return;
       if (!res.ok) {
         throw new Error(
           typeof data?.error === 'string' ? data.error : STRINGS.import.quizlet.error_generic,
@@ -243,175 +177,49 @@ export function ImportScreen({ onStart }: Props) {
       }
       applyQuizletResult(data);
     } catch (err) {
+      if (quizletRequestRef.current !== controller) return;
       setQuizletProgress(null);
       setQuizletError(
-        err instanceof Error && err.name === 'AbortError'
+        controller.signal.aborted
           ? STRINGS.import.quizlet.error_timeout
-          : err instanceof Error && typeof err.message === 'string' && err.message
+          : err instanceof Error && !(err instanceof SyntaxError) && !(err instanceof TypeError) && err.message
             ? err.message
             : STRINGS.import.quizlet.error_generic,
       );
-      // Quizlet blocked the import (the usual case) → offer the archive.ph
-      // fallback right below the error.
-      setArchiveOffer(true);
     } finally {
       clearInterval(ticker);
       clearTimeout(abortTimer);
-      setQuizletBusy(false);
-    }
-  }, [quizletUrl, applyQuizletResult, resetArchiveFlow]);
-
-  /**
-   * The archive.ph fallback — the exact workflow a human does by hand,
-   * assisted so it stays one click:
-   *
-   *   1. Open archive.ph's save form in a popup with the Quizlet URL
-   *      pre-filled (synchronously from this click handler, so popup
-   *      blockers don't eat it). The user clicks Save there — their browser
-   *      passes archive.ph's security check, which no server can.
-   *      In parallel, the server ALSO tries to submit the save itself
-   *      (best effort — often captcha'd from Vercel's IP).
-   *   2. Poll /api/import-archive every 12 s: the server checks whether the
-   *      snapshot exists yet (via archive.ph's /newest/ redirect across
-   *      mirrors and CORS relays) and, the moment it does, returns the
-   *      parsed cards in the same response.
-   *   3. On ready → the cards land in the preview table like any import.
-   *      After ~5 minutes without a snapshot → invite the user to paste the
-   *      archive.ph link they landed on (bulletproof path — the snapshot
-   *      page URL imports directly).
-   */
-  const handleArchiveImport = useCallback(async () => {
-    const link = quizletUrl.trim();
-    if (!link) {
-      setQuizletError(STRINGS.import.quizlet.error_no_url);
-      return;
-    }
-    setArchiveError(null);
-    setArchiveChecks(0);
-
-    // 1. Popup FIRST (must be synchronous with the click to survive popup
-    //    blockers) + parallel best-effort server-side save submission.
-    window.open(archivePopupUrl(link), 'quizlet-archive-save', 'width=760,height=840,noopener');
-    void fetch('/api/import-archive', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: link }),
-    }).catch(() => {
-      /* the popup is the real path — a failed server attempt is fine */
-    });
-
-    // 2. Poll until the snapshot appears (or the user cancels / we time out).
-    archiveAbortRef.current = false;
-    setArchiveFlow('waiting');
-    for (let check = 1; check <= ARCHIVE_POLL_MAX_CHECKS; check++) {
-      if (check > 1) await sleep(ARCHIVE_POLL_INTERVAL_MS);
-      if (archiveAbortRef.current) return;
-
-      setArchiveChecks(check);
-      try {
-        const res = await fetch(`/api/import-archive?url=${encodeURIComponent(link)}`);
-        const data = await res.json();
-        if (archiveAbortRef.current) return;
-        if (data?.ready) {
-          try {
-            applyQuizletResult(data, ARCHIVE_UI.via_note);
-            setArchiveOffer(false);
-            resetArchiveFlow();
-          } catch (err) {
-            // Snapshot parsed but unusable (e.g. fewer than 2 text cards) —
-            // polling again won't change that; surface the reason.
-            setArchiveFlow('manual');
-            setArchiveError(
-              err instanceof Error && typeof err.message === 'string'
-                ? err.message
-                : STRINGS.import.quizlet.error_generic,
-            );
-          }
-          return;
-        }
-        if (data?.blocked) {
-          setArchiveFlow('manual');
-          setArchiveError(ARCHIVE_UI.blocked);
-          return;
-        }
-        // ready:false → keep polling (a 502 with error also just keeps the
-        // loop going — the next check may reach a different mirror).
-      } catch {
-        /* transient network error — keep polling */
+      if (quizletRequestRef.current === controller) {
+        quizletRequestRef.current = null;
+        quizletAbortTimerRef.current = null;
+        quizletTickerRef.current = null;
+        setQuizletBusy(false);
       }
     }
+  }, [quizletUrl, applyQuizletResult]);
 
-    // 3. Timed out — the manual paste path always works.
-    if (!archiveAbortRef.current) {
-      setArchiveFlow('manual');
-      setArchiveError(ARCHIVE_UI.timeout);
-    }
-  }, [quizletUrl, applyQuizletResult, resetArchiveFlow]);
-
-  /** Manual escape hatch: paste the archive.ph snapshot link (the page the
-   *  user landed on after saving) and import it directly. */
-  const handleManualArchiveImport = useCallback(async () => {
-    const link = manualUrl.trim();
-    if (!link) {
-      setArchiveError('Paste your archive.ph link first.');
-      return;
-    }
-    setManualBusy(true);
-    setArchiveError(null);
-    try {
-      const res = await fetch(`/api/import-quizlet?url=${encodeURIComponent(link)}`);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          typeof data?.error === 'string' ? data.error : STRINGS.import.quizlet.error_generic,
-        );
-      }
-      applyQuizletResult(data, ARCHIVE_UI.via_note);
-      setArchiveOffer(false);
-      resetArchiveFlow();
-    } catch (err) {
-      setArchiveError(
-        err instanceof Error && typeof err.message === 'string' && err.message
-          ? err.message
-          : STRINGS.import.quizlet.error_generic,
-      );
-    } finally {
-      setManualBusy(false);
-    }
-  }, [manualUrl, applyQuizletResult, resetArchiveFlow]);
-
-  /**
-   * Editable terms table.
-   *
-   * `text` (the textarea) is the parsing source-of-truth: every keystroke in
-   * the textarea re-parses and overwrites `terms`. After parsing, the user can
-   * edit any cell to fix mis-splits (e.g. "hello, world, foo" — the comma
-   * splitter would put "hello" as term and "world, foo" as definition, but the
-   * user can move text between the two cells directly). Row edits do NOT write
-   * back to the textarea.
-   *
-   * We use the "adjust state during render" pattern (see React docs:
-   * https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
-   * to re-parse whenever `text` / `tab` / `separator` changes, without an
-   * effect.
-   */
-  const [terms, setTerms] = useState<GravityTerm[]>([]);
+  // Reparse manual paste/CSV sources when their inputs change. Imported card
+  // values and preview edits survive separator or tab changes until replaced.
   const [lastSource, setLastSource] = useState<{
     text: string;
     tab: 'paste' | 'file';
     separator: Separator;
-  }>({ text: '', tab: 'paste', separator: 'comma' });
+    structuredImport: boolean;
+  }>({ text: '', tab: 'paste', separator: 'comma', structuredImport: false });
   if (
     lastSource.text !== text ||
     lastSource.tab !== tab ||
-    lastSource.separator !== separator
+    lastSource.separator !== separator ||
+    lastSource.structuredImport !== structuredImport
   ) {
-    setLastSource({ text, tab, separator });
-    setTerms(
-      tab === 'paste'
-        ? parsePastedList(text, separator)
-        : parseCsv(text, separator).terms,
-    );
+    setLastSource({ text, tab, separator, structuredImport });
+    if (!structuredImport) {
+      setTerms(
+        tab === 'paste'
+          ? parsePastedList(text, separator)
+          : parseCsv(text, separator).terms,
+      );
+    }
   }
 
   // offer to restore the last set (read post-hydration to avoid SSR mismatch)
@@ -428,6 +236,7 @@ export function ImportScreen({ onStart }: Props) {
   const handleFile = useCallback(async (file: File) => {
     try {
       const content = await readFileAsText(file);
+      setStructuredImport(false);
       setText(content);
       setFileName(file.name);
       setError(null);
@@ -548,7 +357,6 @@ export function ImportScreen({ onStart }: Props) {
                 onClick={() => {
                   setQuizletOpen((o) => !o);
                   setQuizletError(null);
-                  if (quizletOpen) resetArchiveFlow();
                 }}
                 aria-expanded={quizletOpen}
                 aria-controls="quizlet-import-panel"
@@ -662,104 +470,9 @@ export function ImportScreen({ onStart }: Props) {
                 {quizletError ? (
                   <div className="GravityImportQuizlet-error" role="alert">
                     {quizletError}
-                  </div>
-                ) : null}
-
-                {/* ── archive.ph fallback panel ───────────────────────────
-                    Appears after a blocked import: one click opens the
-                    archive.ph save form in a popup (user clicks Save with
-                    their own browser) and this panel polls until the
-                    snapshot is ready, then imports automatically. The
-                    manual paste input is the bulletproof escape hatch. */}
-                {archiveOffer ? (
-                  <div
-                    className="GravityImportQuizlet-archive"
-                    style={{ marginTop: '0.75rem' }}
-                  >
-                    {archiveFlow === 'idle' ? (
-                      <>
-                        <p className="GravityImportQuizlet-hint">{ARCHIVE_UI.offer}</p>
-                        <div className="GravityImportQuizlet-row">
-                          <button
-                            type="button"
-                            className="GravityImportQuizlet-fetch"
-                            onClick={() => void handleArchiveImport()}
-                          >
-                            {ARCHIVE_UI.start_button}
-                          </button>
-                          <button
-                            type="button"
-                            className="GravityImportQuizlet-fetch"
-                            onClick={() => setArchiveFlow('manual')}
-                          >
-                            {ARCHIVE_UI.manual_button}
-                          </button>
-                        </div>
-                      </>
-                    ) : null}
-
-                    {archiveFlow === 'waiting' ? (
-                      <>
-                        <p className="GravityImportQuizlet-status" role="status">
-                          {ARCHIVE_UI.waiting_status(archiveChecks)}
-                        </p>
-                        <p className="GravityImportQuizlet-hint">{ARCHIVE_UI.waiting_hint}</p>
-                        <div className="GravityImportQuizlet-row">
-                          <button
-                            type="button"
-                            className="GravityImportQuizlet-fetch"
-                            onClick={resetArchiveFlow}
-                          >
-                            {ARCHIVE_UI.waiting_cancel}
-                          </button>
-                        </div>
-                      </>
-                    ) : null}
-
-                    {archiveFlow === 'manual' ? (
-                      <>
-                        <div className="GravityImportQuizlet-row">
-                          <label className="GravityImportQuizlet-label" htmlFor="archive-url-input">
-                            {ARCHIVE_UI.manual_label}
-                          </label>
-                          <input
-                            id="archive-url-input"
-                            type="url"
-                            className="GravityImportQuizlet-input"
-                            value={manualUrl}
-                            placeholder={ARCHIVE_UI.manual_placeholder}
-                            onChange={(e) => {
-                              setManualUrl(e.target.value);
-                              setArchiveError(null);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                void handleManualArchiveImport();
-                              }
-                            }}
-                            disabled={manualBusy}
-                          />
-                          <button
-                            type="button"
-                            className="GravityImportQuizlet-fetch"
-                            onClick={() => void handleManualArchiveImport()}
-                            disabled={manualBusy || manualUrl.trim() === ''}
-                          >
-                            {manualBusy ? ARCHIVE_UI.manual_busy : ARCHIVE_UI.manual_import_button}
-                          </button>
-                        </div>
-                        <p className="GravityImportQuizlet-hint">
-                          {ARCHIVE_UI.manual_hint}
-                        </p>
-                      </>
-                    ) : null}
-
-                    {archiveError ? (
-                      <div className="GravityImportQuizlet-error" role="alert">
-                        {archiveError}
-                      </div>
-                    ) : null}
+                    <p className="GravityImportQuizlet-hint">
+                      {STRINGS.import.quizlet.manual_fallback}
+                    </p>
                   </div>
                 ) : null}
               </div>
@@ -791,12 +504,15 @@ export function ImportScreen({ onStart }: Props) {
                   value={text}
                   placeholder={SAMPLE}
                   onChange={(e) => {
+                    setStructuredImport(false);
                     setText(e.target.value);
                     setError(null);
                   }}
                   aria-label={STRINGS.import.paste_tab}
                 />
-                <p className="GravityImportMeta">{STRINGS.import.meta_paste}</p>
+                <p className="GravityImportMeta">
+                  {structuredImport ? STRINGS.import.quizlet.imported_hint : STRINGS.import.meta_paste}
+                </p>
               </>
             ) : (
               <>
@@ -847,22 +563,46 @@ export function ImportScreen({ onStart }: Props) {
                   {visibleTerms.map((t, i) => (
                     <div key={t.id} className="GravityImportPreview-row">
                       <span className="GravityImportPreview-index">{i + 1}</span>
-                      <input
-                        className="GravityImportPreview-input GravityImportPreview-input--term"
-                        type="text"
-                        value={t.word}
-                        placeholder="term"
-                        onChange={(e) => updateTermWord(t.id, e.target.value)}
-                        aria-label={`Row ${i + 1} term`}
-                      />
-                      <input
-                        className="GravityImportPreview-input GravityImportPreview-input--definition"
-                        type="text"
-                        value={t.definition}
-                        placeholder="definition"
-                        onChange={(e) => updateTermDefinition(t.id, e.target.value)}
-                        aria-label={`Row ${i + 1} definition`}
-                      />
+                      {structuredImport ? (
+                        <textarea
+                          className="GravityImportPreview-input GravityImportPreview-input--term"
+                          rows={Math.min(4, t.word.split(/\r?\n/).length)}
+                          style={{ resize: 'vertical' }}
+                          value={t.word}
+                          placeholder="term"
+                          onChange={(e) => updateTermWord(t.id, e.target.value)}
+                          aria-label={`Row ${i + 1} term`}
+                        />
+                      ) : (
+                        <input
+                          className="GravityImportPreview-input GravityImportPreview-input--term"
+                          type="text"
+                          value={t.word}
+                          placeholder="term"
+                          onChange={(e) => updateTermWord(t.id, e.target.value)}
+                          aria-label={`Row ${i + 1} term`}
+                        />
+                      )}
+                      {structuredImport ? (
+                        <textarea
+                          className="GravityImportPreview-input GravityImportPreview-input--definition"
+                          rows={Math.min(4, t.definition.split(/\r?\n/).length)}
+                          style={{ resize: 'vertical' }}
+                          value={t.definition}
+                          placeholder="definition"
+                          onChange={(e) => updateTermDefinition(t.id, e.target.value)}
+                          aria-label={`Row ${i + 1} definition`}
+                        />
+                      ) : (
+                        <input
+                          className="GravityImportPreview-input GravityImportPreview-input--definition"
+                          type="text"
+                          value={t.definition}
+                          placeholder="definition"
+                          onChange={(e) => updateTermDefinition(t.id, e.target.value)}
+                          aria-label={`Row ${i + 1} definition`}
+                        />
+                      )}
                       <button
                         type="button"
                         className={`GravityImportPreview-starRow ${t.starred ? 'is-starred' : ''}`}
@@ -905,6 +645,7 @@ export function ImportScreen({ onStart }: Props) {
               <button
                 className="UIButton UIButton--default"
                 onClick={() => {
+                  setStructuredImport(false);
                   setText('');
                   setFileName(null);
                   setError(null);
