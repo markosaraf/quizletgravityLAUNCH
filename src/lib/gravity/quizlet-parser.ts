@@ -37,6 +37,32 @@ export class IncompleteQuizletSetError extends Error {
  * URL parsing and an exact hostname allowlist prevent lookalike-domain fetches.
  */
 export function normalizeQuizletUrl(raw: string): { setId: string; url: string } {
+  try {
+    return normalizeSetUrl(raw);
+  } catch (originalError) {
+    // Share captions are localized, so find URLs rather than recognizing
+    // English phrases. Every extracted candidate still passes strict parsing.
+    if (typeof raw !== 'string' || raw.length > MAX_URL_LENGTH || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(raw)) {
+      throw originalError;
+    }
+    const candidates = raw.matchAll(/(?:^|[\s(<\["'«“])((?:https?:\/\/)?(?:www\.)?quizlet\.com\/[^\s<>"«»“”]+)/gi);
+    const sets = new Map<string, { setId: string; url: string }>();
+    for (const match of candidates) {
+      const candidate = match[1].replace(/[.,;:!?\)\]\}'。！？，；：]+$/u, '');
+      try {
+        const normalized = normalizeSetUrl(candidate);
+        sets.set(normalized.setId, normalized);
+      } catch {
+        // A caption or malformed URL must never weaken hostname/path checks.
+      }
+    }
+    if (sets.size > 1) throw new Error('Please paste one Quizlet set link at a time.');
+    if (sets.size === 1) return sets.values().next().value!;
+    throw originalError;
+  }
+}
+
+function normalizeSetUrl(raw: string): { setId: string; url: string } {
   if (typeof raw !== 'string') throw new Error('Enter a Quizlet set link.');
   const input = raw.trim();
   if (!input || input.length > MAX_URL_LENGTH || /[\u0000-\u0020\u007f\\]/.test(input)) {

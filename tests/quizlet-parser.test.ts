@@ -80,6 +80,31 @@ test('rejects spoofed hosts, credentials, paths and protocols before fetching', 
   ]) assert.throws(() => normalizeQuizletUrl(input), input);
 });
 
+test('extracts a strictly validated set link from localized app share captions', () => {
+  const shared = 'https://quizlet.com/ch/1181229873/voci-mission-6-flash-cards/?x=1jqU&i=48mwv5';
+  for (const caption of [
+    `Studying Voci Mission 6 on Quizlet: ${shared}`,
+    `Ich lerne Voci Mission 6 auf Quizlet: ${shared}`,
+    `Opiskelen Quizletissä:\n${shared}\nKokeile tätä!`,
+    `学習中：\n(${shared}).`,
+    `Here is my set: ${shared} — shared from my phone`,
+  ]) {
+    assert.deepEqual(normalizeQuizletUrl(caption), {
+      setId: '1181229873', url: 'https://quizlet.com/ch/1181229873/voci-mission-6-flash-cards/',
+    });
+  }
+  assert.equal(normalizeQuizletUrl('Lerne hier: https://quizlet.com/de/karteikarten/einmaleins-250942042.').setId, '250942042');
+  assert.throws(() => normalizeQuizletUrl(`Two sets: ${shared} https://quizlet.com/250942042/`), /one Quizlet set/);
+  for (const caption of [
+    `Studying: https://quizlet.com.evil.example/${SET_ID}/`,
+    `Studying: https://quizlet.com@evil.example/${SET_ID}/`,
+    `Studying: https://evil.example/quizlet.com/${SET_ID}/`,
+    `Studying: https://quizlet.com/${SET_ID}/learn`,
+    `Studying: https://quizlet.com/\n${SET_ID}/`,
+    `Studying: https://quizlet.com/${SET_ID}/evil%2fflash-cards`,
+  ]) assert.throws(() => normalizeQuizletUrl(caption), caption);
+});
+
 test('accepts translated slug-ID set routes without a language or translation allowlist', () => {
   // German and French are actual route shapes. The other translated paths
   // deliberately test structural support, not an inventory of Quizlet routes.
