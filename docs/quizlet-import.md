@@ -35,8 +35,14 @@ Firecrawl was selected after a real successful raw-HTML retrieval. Browserbase a
 
 References: https://www.firecrawl.dev/pricing, https://docs.firecrawl.dev/features/scrape, https://docs.firecrawl.dev/rate-limits, https://www.browserbase.com/pricing.
 
-## Deployment handoff (15 October 2026)
+## Deployment status (15 October 2026)
 
-The implementation is committed locally on `fix/firecrawl-import` in this worktree. GitHub push was rejected because the local Git credentials identify `natasasdj`; no remote branch was changed. Vercel MCP/CLI deployment attempts were rejected by account permissions, so the live website still uses the previous importer until a deployment succeeds. The key was confirmed as a Vercel Secret and its target includes Production and Preview.
+Published to https://www.quizletgravity.com using the authenticated Vercel CLI from this worktree. Preview deployment `dpl_GoEgmNQ2dFyCoD5hak7tvyjhpR5G` successfully imported all 62 reference cards with the configured account key before production was published.
 
-After signing in to the correct Vercel account with `npx vercel@latest login`, verify this folder resolves to project `quizletgravity-launch` in `markosarafs-projects`. Deploy a preview and verify a real import with the production-like configuration before publishing to the production domain. Do not treat a local successful import as a published fix.
+Production deployment: `dpl_8onf59TqkqiWrxBwiWqunZbndPay` (https://quizletgravity-launch-i6qoqj8eq-markosarafs-projects.vercel.app). Deployed application source is local commit `55ac012` on `fix/firecrawl-import` (implementation commit `def7781`). Vercel Hobby was retained.
+
+The production browser check verified the actual same-origin POST, all 62 cards with zero skipped, preview-to-game persistence, separator changes, rapid-click deduplication, active gameplay, and manual paste. No browser errors occurred. The production API rejected lookalike hosts and missing URLs with HTTP 400; the apex domain resolves to the live website. Evidence remains outside the repository at `/tmp/quizlet-deployment-browser-evidence.json`.
+
+The source is saved locally in this worktree. GitHub push was rejected because the local Git credentials identify `natasasdj`; no remote branch was changed. The GitHub main branch therefore still contains the previous importer. Before subsequent Git-triggered deployments, push/merge this tested branch using the GitHub account with write access so it does not get overwritten by the old code.
+
+`FIRECRAWL_API_KEY` is configured as a Secret for Production and Preview. No key is in the source or browser bundle. Rotate keys through Firecrawl and update Vercel directly, then redeploy.
