@@ -35,7 +35,7 @@ Firecrawl was selected after a real successful raw-HTML retrieval. Browserbase a
 
 References: https://www.firecrawl.dev/pricing, https://docs.firecrawl.dev/features/scrape, https://docs.firecrawl.dev/rate-limits, https://www.browserbase.com/pricing.
 
-## Deployment status (15 October 2026)
+## Initial Firecrawl release (15 October 2026)
 
 Published to https://www.quizletgravity.com using the authenticated Vercel CLI from this worktree. Preview deployment `dpl_GoEgmNQ2dFyCoD5hak7tvyjhpR5G` successfully imported all 62 reference cards with the configured account key before production was published.
 
@@ -52,3 +52,9 @@ The source is saved locally in this worktree. GitHub push was rejected because t
 The initial URL validator rejected the real German route `/de/karteikarten/einmaleins-250942042` before contacting Firecrawl. Structural matching now extracts the terminal set ID without a dictionary of translated route names. Exact hostname checks, bounded numeric IDs, decoded-segment validation and complete fetched-set identity checks remain.
 
 Added synthetic route tests cover German, French, Finnish, Spanish, Japanese, Chinese and Arabic characters plus malformed/encoded/extra-path rejection. Actual provider fixtures verified the user’s German Einmaleins set (100 cards) and a real Finnish `/fi/666063657/quizlet-flash-cards/` set (20 cards). Canonical numeric retrieval of the German set was also verified before deployment. Synthetic localized routes test parser generality and are not claimed to be actual Quizlet endpoints.
+
+## Current production release (15 October 2026)
+
+Localized-link support is live at https://www.quizletgravity.com in deployment `dpl_5X1udabZcyGApZaqn4GawLfNmxLN` (https://quizletgravity-launch-rh3ohhp06-markosarafs-projects.vercel.app), built from local source commit `7602602`. The same source passed on preview `dpl_E44ZYonaAFuhjD3YA5JEtMibkWpx` before publication. No Vercel plan upgrade was needed.
+
+The live browser import form accepted the exact reported German link and imported all 100 cards, with every preview field and stored pair matching the API result, then started active gameplay. It also accepted the real Finnish link and displayed all 20 cards correctly. Both requests returned HTTP 200 with zero skipped cards, and no browser page errors occurred. Evidence is saved outside the repository at `/tmp/quizlet-localized-browser-evidence.json`. Regression tests, type checking, targeted lint and the production build passed before deployment.
