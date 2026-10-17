@@ -54,7 +54,7 @@ export default function Home() {
     '@id': `${siteUrl}/#howto`,
     name: 'How to play Quizlet Gravity',
     description:
-      "Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play Quizlet's Gravity study mode.",
+      "Import a public Quizlet set link, paste a term list, or upload a CSV to play Quizlet's Gravity study mode. Defend your planet from falling asteroids by typing the correct answers.",
     step: HOW_TO_STEPS.map((text, i) => ({
       '@type': 'HowToStep',
       position: i + 1,

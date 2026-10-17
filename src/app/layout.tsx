@@ -53,9 +53,9 @@ const poppins = Poppins({
 const TITLE_LONG = "Quizlet – Gravity Mode | Type to Defend Your Planet";
 const TITLE_SHORT = "Quizlet – Gravity Mode";
 const DESC_LONG =
-  "Quizlet's Gravity mode recreated. Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.";
+  "Import a public Quizlet set link, paste a term list, or upload a CSV to play Quizlet's recreated Gravity mode. Defend your planet from falling asteroids by typing the correct answers.";
 const DESC_SHORT =
-  "Defend your planet from falling asteroids by typing the correct answers. Paste a term list or upload a CSV to play.";
+  "Import a public Quizlet set link, paste a term list, or upload a CSV to play. Defend your planet from falling asteroids by typing the correct answers.";
 
 /* ----------------------------------------------------------------------------
    Entity dates — used in JSON-LD (datePublished / dateModified).
@@ -63,7 +63,7 @@ const DESC_SHORT =
    change. Update DATE_MODIFIED whenever you change on-page content.
 ---------------------------------------------------------------------------- */
 const DATE_PUBLISHED = "2026-09-04"; // first commit / site launch
-const DATE_MODIFIED = "2026-09-15";  // square image moved to JSON-LD-only
+const DATE_MODIFIED = "2026-10-17";  // Quizlet link import added to descriptions
 
 /* ----------------------------------------------------------------------------
    OG IMAGES — TWO-CHANNEL STRATEGY. Read this before touching anything.
