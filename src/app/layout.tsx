@@ -182,13 +182,14 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     icons: {
       icon: [
-        { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
-        { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-        { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
-        { url: "/icon.svg", type: "image/svg+xml" },
+        { url: "/favicon.ico?v=20261022", sizes: "16x16 32x32 48x48" },
+        { url: "/icon-48.png?v=20261022", sizes: "48x48", type: "image/png" },
+        { url: "/icon-192.png?v=20261022", sizes: "192x192", type: "image/png" },
+        { url: "/icon-32.png?v=20261022", sizes: "32x32", type: "image/png" },
+        { url: "/icon.svg?v=20261022", sizes: "any", type: "image/svg+xml" },
       ],
       apple: [
-        { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+        { url: "/apple-icon.png?v=20261022", sizes: "180x180", type: "image/png" },
       ],
     },
   };
