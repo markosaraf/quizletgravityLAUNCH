@@ -7,8 +7,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Same Q path, colour and uniform scale as the verified iPad launcher icon.
 // Rounded outer corners are for browsers, which do not apply an iOS icon mask.
 const svg = await fs.readFile(path.join(root, 'assets/branding/app-icon.svg'));
-for (const name of ['src/app/icon.svg', 'public/logo.svg']) {
-  await fs.writeFile(path.join(root, name), svg);
+const tabSvg = await fs.readFile(path.join(root, 'assets/branding/tab-icon.svg'));
+await fs.writeFile(path.join(root, 'public/logo.svg'), svg);
+// Browser tabs use the transparent gold mark. Keep the former URL working too.
+for (const name of ['public/tab-gold.svg', 'public/icon.svg']) {
+  await fs.writeFile(path.join(root, name), tabSvg);
 }
 for (const [name, size] of [
   ['public/icon-32.png', 32],

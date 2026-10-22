@@ -181,12 +181,11 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [OG_IMAGE_DEFAULT],
     },
     icons: {
+      // Only the transparent SVG is a browser favicon. Firefox otherwise picks
+      // a competing PNG for the tab. Google also accepts apple-touch-icon for
+      // Search, so the gold-on-blue raster remains available through that link.
       icon: [
-        { url: "/favicon.ico?v=20261022", sizes: "16x16 32x32 48x48" },
-        { url: "/icon-48.png?v=20261022", sizes: "48x48", type: "image/png" },
-        { url: "/icon-192.png?v=20261022", sizes: "192x192", type: "image/png" },
-        { url: "/icon-32.png?v=20261022", sizes: "32x32", type: "image/png" },
-        { url: "/icon.svg?v=20261022", sizes: "any", type: "image/svg+xml" },
+        { url: "/tab-gold.svg", sizes: "any", type: "image/svg+xml" },
       ],
       apple: [
         { url: "/apple-icon.png?v=20261022", sizes: "180x180", type: "image/png" },
