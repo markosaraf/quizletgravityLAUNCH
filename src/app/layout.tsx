@@ -50,7 +50,7 @@ const poppins = Poppins({
    SEO strings (split per-platform for length tuning — see previous version
    for the rationale).
 ---------------------------------------------------------------------------- */
-const TITLE_LONG = "Quizlet – Gravity Mode | Type to Defend Your Planet";
+const TITLE_LONG = "Quizlet Gravity Mode | Type to Defend Your Planet";
 const TITLE_SHORT = "Quizlet – Gravity Mode";
 const DESC_LONG =
   "Import a public Quizlet set link, paste a term list, or upload a CSV to play Quizlet's recreated Gravity mode. Defend your planet from falling asteroids by typing the correct answers.";
