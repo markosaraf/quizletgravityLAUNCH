@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { createEmailVerificationToken } from 'better-auth/api';
 import { username, anonymous, oneTimeToken } from 'better-auth/plugins';
 import { db } from './db';
 import { sendRecovery, sendConfirmation } from './recovery';
@@ -7,7 +8,16 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3035',
   secret: process.env.BETTER_AUTH_SECRET,
   appName: 'Quizzlet Gravity',
-  emailAndPassword: { enabled: true, requireEmailVerification: true, autoSignIn: false, minPasswordLength: 8, maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
+  emailAndPassword: { enabled: true, requireEmailVerification: true, autoSignIn: false, minPasswordLength: 8, maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true,
+    onExistingUserSignUp: async ({user}) => {
+      if (user.emailVerified) return;
+      const secret=process.env.BETTER_AUTH_SECRET;
+      if(!secret) throw new Error('Account verification is not configured');
+      const token=await createEmailVerificationToken(secret,user.email,undefined,3600,{userId:user.id});
+      const link=new URL('/api/auth/verify-email',process.env.BETTER_AUTH_URL || 'http://localhost:3035');
+      link.searchParams.set('token',token);link.searchParams.set('callbackURL','/email-confirmed');
+      await sendConfirmation(user.email,link.href,(user as {username?:string}).username);
+    }, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
   emailVerification: {
     sendOnSignUp: true,
     sendOnSignIn: true,
@@ -15,7 +25,7 @@ export const auth = betterAuth({
     autoSignInAfterVerification: false,
     sendVerificationEmail: async ({user,url}) => {
       const link=new URL(url);link.searchParams.set('callbackURL','/email-confirmed');
-      await sendConfirmation(user.email,link.href);
+      await sendConfirmation(user.email,link.href,(user as {username?:string}).username);
     },
   },
   socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {

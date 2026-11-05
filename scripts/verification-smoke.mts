@@ -38,6 +38,13 @@ try {
  assert.equal(messages.length,1);const oldLink=latestLink();
  const denied=await request('/sign-in/username',{username,password});assert.equal(denied.response.status,403);assert.equal(denied.data.code,'EMAIL_NOT_VERIFIED');
  assert.equal(messages.length,2);
+ const repeated=await request('/sign-up/email',{username:'other_'+suffix,email,password:'DifferentPass123!',name:'Another name',callbackURL:'/email-confirmed'});
+ assert.equal(repeated.response.status,200);assert.equal(messages.length,3);
+ assert.equal((await db.query('SELECT username FROM "user" WHERE id=$1',[userId])).rows[0].username,username);
+ assert.equal((await db.query('SELECT count(*) FROM "user" WHERE email=$1',[email])).rows[0].count,'1');
+ const resentLink=latestLink();assert.equal(resentLink.pathname,'/api/auth/verify-email');
+ assert.equal(messages.at(-1)?.includes('Your username: '+username),true);
+
  await assert.rejects(correctPendingEmail(username,'wrong-password',corrected));
  await correctPendingEmail(username,password,corrected);
  const stale=await request(oldLink.pathname.replace('/api/auth','')+oldLink.search);assert.notEqual(stale.response.headers.get('location'),'/email-confirmed');
