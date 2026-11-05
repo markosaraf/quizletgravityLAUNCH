@@ -24,7 +24,7 @@ try{
   await dialog.getByRole('button',{name:'Resend confirmation',exact:true}).click();
   await dialog.getByText('If this address is awaiting confirmation, a new link has been sent.').waitFor();
   await dialog.getByLabel('Email',{exact:true}).fill('correct@example.test');
-  await dialog.getByRole('button',{name:'Correct email & send confirmation',exact:true}).click();
+  await dialog.getByRole('button',{name:'Send confirmation email',exact:true}).click();
   await dialog.getByText('Confirmation sent. Check your inbox and spam folder, then return here to sign in.').waitFor();
   await page.screenshot({path:`/tmp/quizzlet-verification-${width}.png`});
   const bounds=await dialog.boundingBox();assert(bounds.x>=0&&bounds.y>=0&&bounds.y+bounds.height<=845);
