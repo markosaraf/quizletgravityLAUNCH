@@ -16,11 +16,9 @@ try{
   await dialog.getByRole('button',{name:'Create account',exact:true}).click();
   await dialog.getByLabel('Username',{exact:true}).fill('player');
   await dialog.getByLabel('Email',{exact:true}).fill('player@example.test');
-  await dialog.getByLabel('Confirm email',{exact:true}).fill('typo@example.test');
+  assert.equal(await dialog.locator('input[type=email]').count(),1);
+  assert.equal(await dialog.getByLabel('Confirm email',{exact:true}).count(),0);
   await dialog.getByLabel('Password',{exact:true}).fill('password123');
-  await dialog.getByRole('button',{name:'Create account',exact:true}).last().click();
-  await dialog.getByText('The email addresses do not match.',{exact:true}).waitFor();assert.equal(requests,0);
-  await dialog.getByLabel('Confirm email',{exact:true}).fill('player@example.test');
   await dialog.getByRole('button',{name:'Create account',exact:true}).last().click();
   await dialog.getByText('Check your email to activate your account.',{exact:false}).waitFor();assert.equal(requests,1);
   await dialog.getByRole('button',{name:'Resend confirmation',exact:true}).click();
@@ -34,5 +32,5 @@ try{
   await dialog.getByRole('button',{name:'Sign in',exact:true}).last().waitFor();
   await page.close();
  }
- console.log('PASS: mobile/desktop signup, typo prevention, pending confirmation, resend, address correction and return to login. No email sent.');
+ console.log('PASS: mobile/desktop signup with one email field, pending confirmation, resend, address correction and return to login. No email sent.');
 }finally{await browser.close();}
