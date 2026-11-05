@@ -16,7 +16,7 @@ function AccountDialog({open,onOpenChange,onDone}:{open:boolean;onOpenChange:(op
 }
 export function CommunityNav(){
  const {data:session}=authClient.useSession();const [open,setOpen]=useState(false);
- return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity <small>PREVIEW</small></Link><div><Link href="/sets">Sets</Link><button aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)}>{session?.user.username||session?.user.name||'Choose your name'}</button></div></nav><AccountDialog open={open} onOpenChange={setOpen}/></>;
+ return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity</Link><div><Link href="/sets">Sets</Link><button aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)}>{session?.user.username||session?.user.name||'Choose your name'}</button></div></nav><AccountDialog open={open} onOpenChange={setOpen}/></>;
 }
 const subscribeImportUrl=()=>()=>{};
 const getImportUrl=()=>sessionStorage.getItem('gravity-import-url')||'';
