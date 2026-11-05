@@ -7,7 +7,7 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3035',
   secret: process.env.BETTER_AUTH_SECRET,
   appName: 'Quizzlet Gravity',
-  emailAndPassword: { enabled: true, minPasswordLength: 10, maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
+  emailAndPassword: { enabled: true, minPasswordLength: 8, maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
   socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
     google: { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }
   } : {},
