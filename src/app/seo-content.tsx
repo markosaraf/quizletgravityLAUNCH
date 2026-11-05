@@ -28,7 +28,7 @@ export const GAME_FEATURES: string[] = [
   "Dark and light mode, persisted across reloads",
   "Import terms by pasting, or by uploading a CSV file",
   "Comma, semicolon, or dash separator options",
-  "Fully client-side — no account, no data upload",
+  "Shared sets, named guests, accounts and persistent leaderboards",
 ];
 
 /** How-to-play steps — also fed into the HowTo JSON-LD in page.tsx. */
@@ -52,12 +52,12 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "What is Quizlet Gravity?",
     answer:
-      "Quizlet Gravity is a free browser-based study game that faithfully recreates Quizlet's Gravity study mode (the 2020–2024 era version). You defend your planet from falling asteroids by typing the correct answers to your own terms before they land. It runs entirely in your browser — no account required.",
+      "Quizlet Gravity is a free browser-based study game that faithfully recreates Quizlet's Gravity study mode (the 2020–2024 era version). You defend your planet from falling asteroids by typing the correct answers to your own terms before they land. Play locally, or choose a guest name or account to join shared-set leaderboards.",
   },
   {
     question: "Do I need a Quizlet account to play?",
     answer:
-      "No. The game is fully client-side and works without any account or sign-up. Your imported term set, separator choice, theme, and answer preferences are saved locally in your browser via localStorage, so nothing is uploaded to a server.",
+      "No Quizlet account is required. Choose a guest name or create a Quizzlet Gravity account to import and share sets or save leaderboard scores. Guest identity stays in this browser; an account works across devices.",
   },
   {
     question: "How do I add my own study set?",
@@ -67,7 +67,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How does scoring work?",
     answer:
-      "Correct answers earn points that scale with your streak of consecutive correct answers and with the current gravity level: 20 × streak + 150 × (1 + level bonus). Wrong answers subtract 10 points. The session leaderboard ranks every try from the same study set.",
+      "Correct answers earn points that scale with your streak of consecutive correct answers and with the current gravity level: 20 × streak + 150 × (1 + level bonus). Wrong answers subtract 10 points. A shared set has a persistent leaderboard showing each player’s highest completed-game score and difficulty.",
   },
   {
     question: "What are the difficulty levels?",
@@ -87,7 +87,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Is my data private?",
     answer:
-      "Yes. There is no backend and no database. Everything you paste or upload stays in your browser's localStorage — term sets are never sent anywhere. Clearing your browser data removes them.",
+      "Shared and imported sets, creator names, player names and leaderboard scores are public. Account emails and passwords are not public. Unsaved pasted terms and preferences stay in this browser. Only share material you are entitled to share. Read the privacy page for details.",
   },
 ];
 

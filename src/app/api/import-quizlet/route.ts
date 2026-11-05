@@ -1,3 +1,6 @@
+import { auth } from '@/lib/community/auth';
+import { db } from '@/lib/community/db';
+import { saveQuizletSet } from '@/lib/community/sets';
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_cache } from 'next/cache';
 import { fetchQuizletSet, QuizletImportError } from '@/lib/gravity/quizlet';
@@ -30,6 +33,13 @@ async function importSet(request: NextRequest, raw: unknown) {
   } catch (error) {
     return failure(error instanceof Error ? error.message : 'Enter a Quizlet set link.', 400);
   }
+  const session = await auth.api.getSession({headers: request.headers});
+  if (!session) return failure('Choose a guest name or sign in before importing.', 401);
+  const existing = await db.query('SELECT * FROM shared_sets WHERE quizlet_id=$1',[normalized.setId]);
+  if (existing.rows[0]) {
+    const s=existing.rows[0];
+    return NextResponse.json({title:s.title,cards:s.cards,setId:s.quizlet_id,url:s.source_url,creatorName:s.creator_name,creatorUrl:s.creator_url,sharedId:s.id,skipped:0},{headers:NO_STORE});
+  }
   const caller = request.headers.get('x-real-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (!guard.allow(caller)) return failure('Too many imports. Please wait a minute and try again.', 429);
   try {
@@ -42,7 +52,8 @@ async function importSet(request: NextRequest, raw: unknown) {
     )());
     if (!task) return failure('Other sets are importing. Please try again in a moment.', 429);
     const result = await task;
-    return NextResponse.json(result, { headers: NO_STORE });
+    const saved = await saveQuizletSet(result,session.user.id);
+    return NextResponse.json({...result,sharedId:saved.id}, { headers: NO_STORE });
   } catch (error) {
     const known = error instanceof QuizletImportError;
     console.error(JSON.stringify({ event: 'quizlet_import_failed', setId: normalized.setId,
@@ -83,7 +94,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Keep already-open browser tabs compatible with the former GET importer. */
-export async function GET(request: NextRequest) {
-  return importSet(request, new URL(request.url).searchParams.get('url'));
+export async function GET() {
+  return failure('Use POST to import a set.', 405);
 }

@@ -14,6 +14,7 @@ import {
 } from '@/lib/gravity/parse';
 import type { Separator, Theme } from '@/lib/gravity/parse';
 import { importedCardsToTerms } from '@/lib/gravity/import-cards';
+import { ShareSet } from '@/components/community/Community';
 import { STRINGS, format } from '@/lib/gravity/strings';
 import type { GravitySet, GravityTerm } from '@/lib/gravity/types';
 
@@ -43,6 +44,7 @@ const PROGRESS_TICK_MS = 150;
 const PROGRESS_FADE_MS = 700;
 
 export function ImportScreen({ onStart }: Props) {
+  const [original,setOriginal]=useState<{id:string;snapshot:string}>();
   const [tab, setTab] = useState<ImportTab>('quizlet');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export function ImportScreen({ onStart }: Props) {
   // Structured cards remain intact until the user replaces the pasted text/file.
   const [structuredImport, setStructuredImport] = useState(false);
   const [terms, setTerms] = useState<GravityTerm[]>([]);
+  const shareCards=useMemo(()=>terms.map(t=>({term:t.word.trim(),definition:t.definition.trim()})).filter(t=>t.term&&t.definition),[terms]);
 
   const previewRef = useRef<HTMLDivElement>(null);
   const resizePreviewFields = useCallback(() => {
@@ -146,12 +149,13 @@ export function ImportScreen({ onStart }: Props) {
   }, []);
 
   const applyQuizletResult = useCallback(
-    (data: { title?: unknown; cards?: unknown; skipped?: unknown }) => {
+    (data: { title?: unknown; cards?: unknown; skipped?: unknown; sharedId?:string }) => {
       const importedTerms = importedCardsToTerms(data?.cards);
       if (importedTerms === null) throw new Error(STRINGS.import.quizlet.error_generic);
       if (importedTerms.length < 2) throw new Error(STRINGS.import.error_single);
       setStructuredImport(true);
       setTerms(importedTerms);
+      setOriginal(data.sharedId?{id:data.sharedId,snapshot:JSON.stringify(importedTerms.map(t=>({term:t.word.trim(),definition:t.definition.trim()})))}:undefined);
       // This text is only an editable view; it is parsed after an explicit edit.
       setText(importedTerms.map((card) => `${card.word}\t${card.definition}`).join('\n'));
       const title = typeof data?.title === 'string' ? data.title : 'Quizlet set';
@@ -654,6 +658,7 @@ export function ImportScreen({ onStart }: Props) {
               </div>
             ) : null}
 
+            <ShareSet title={fileName??"My study set"} cards={shareCards} original={original}/>
             <div className="GravityImportActions">
               <button
                 className="UIButton UIButton--hero"

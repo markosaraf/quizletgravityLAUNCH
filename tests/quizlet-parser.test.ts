@@ -258,3 +258,15 @@ test('parses an optional real provider response without storing source cards in 
   const expected = process.env.QUIZLET_FIXTURE_COUNT;
   if (expected) assert.equal(result.cards.length + result.skipped, Number(expected));
 });
+
+
+test('attributes the set creator rather than a viewing user', () => {
+  const redux = state() as ReturnType<typeof state> & {setPage: Record<string, unknown>};
+  redux.setPage.creator = {id: 5, username: 'original_teacher'};
+  redux.setPage.user = {id: 9, username: 'viewer'};
+  const result = parseQuizletHtml(html(redux), URL, SET_ID);
+  assert.equal(result.creatorName, 'original_teacher');
+  assert.equal(result.creatorUrl, 'https://quizlet.com/original_teacher/');
+  delete redux.setPage.creator;
+  assert.equal(parseQuizletHtml(html(redux), URL, SET_ID).creatorName, undefined);
+});

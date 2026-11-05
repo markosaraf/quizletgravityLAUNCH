@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { api, Leaderboard } from '@/components/community/Community';
 import { GAME_STATES } from '@/lib/gravity/constants';
 import { gravityStore } from '@/lib/gravity/store';
 import type { GameData, GravitySet, GravityTerm } from '@/lib/gravity/types';
@@ -12,7 +13,14 @@ import { StartView, GameOverView, type LeaderboardEntry } from './StartScreens';
 import { ImportScreen } from './ImportScreen';
 import { setGameStarted } from './LandingSections';
 
-export function GravityApp() {
+export function GravityApp({shared}:{shared?:{set:GravitySet;terms:GravityTerm[]}}) {
+  const runRef=useRef<string|null>(null);
+  const finishedRun=useRef<string|null>(null);
+  const [scoreMessage,setScoreMessage]=useState('');
+  const [scoreRefresh,setScoreRefresh]=useState(0);
+  const [scoreRetry,setScoreRetry]=useState(0);
+  const startingRef=useRef(false);
+  const [starting,setStarting]=useState(false);
   const [started, setStarted] = useState(false);
   const gameplayRef = useRef<HTMLDivElement>(null);
   const size = useGameplaySize(gameplayRef, started);
@@ -65,6 +73,20 @@ export function GravityApp() {
     setCurrentTryIndex(-1);
     setLastRecordedKey(null);
   }, []);
+
+  useEffect(()=>{if(shared)handleStartSet(shared.set,shared.terms);},[shared,handleStartSet]);
+  const beginGame=async(restart=false)=>{
+    if(startingRef.current)return;
+    startingRef.current=true;setStarting(true);setScoreMessage('');
+    try{if(shared){const run=await api('runs',{setId:shared.set.id,mode:gravityStore.getSnapshot().difficultyLevel});runRef.current=run.id;finishedRun.current=null;}
+      if(restart)gravityStore.restartGame();else gravityStore.startGame();
+    }catch(e){setScoreMessage((e as Error).message);}finally{startingRef.current=false;setStarting(false);}
+  };
+  useEffect(()=>{
+    if(!shared||!data||data.gameState!==GAME_STATES.GAME_OVER||!runRef.current||finishedRun.current===runRef.current)return;
+    const id=runRef.current;finishedRun.current=id;
+    api(`runs/${id}/finish`,{score:data.points,level:data.level}).then(()=>{setScoreMessage('Your best score is saved.');setScoreRefresh(n=>n+1);}).catch(e=>{finishedRun.current=null;setScoreMessage('Score not saved: '+e.message);});
+  },[data?.gameState,data?.points,data?.level,shared,scoreRetry]);
 
   // Special characters (ä ö é ß š …) that exist in the CURRENT set —
   // shown as clickable insert buttons above the typing field and the
@@ -132,12 +154,13 @@ export function GravityApp() {
   }, [started, data]);
 
   const handleNewSet = useCallback(() => {
+    if (shared) { window.location.assign("/"); return; }
     gravityStore.dispose();
     setStarted(false);
     setLeaderboard([]);
     setCurrentTryIndex(-1);
     setLastRecordedKey(null);
-  }, []);
+  }, [shared]);
 
   // Mirror the `started` flag into the LandingSections store: while a
   // game session is running, the "How to play" + FAQ landing sections
@@ -155,6 +178,7 @@ export function GravityApp() {
   // (mobile layout in the top bar handles narrow widths).
   return (
     <div className="gravity-root">
+      {(scoreMessage||starting)&&<p className="community-message" role="status">{starting?"Starting ranked game…":scoreMessage}</p>}
       <SiteHeader
         title={data.set.title}
         points={data.points}
@@ -163,7 +187,7 @@ export function GravityApp() {
         showMobileControls
         onPause={() => gravityStore.pauseGame()}
         onResume={() => gravityStore.resumeGame()}
-        onRestart={() => gravityStore.restartGame()}
+        onRestart={() => void beginGame(true)}
         onNewSet={handleNewSet}
       />
       <div className="GravityModeLayout">
@@ -175,7 +199,7 @@ export function GravityApp() {
             setPathLabel={data.set.title}
             onPause={() => gravityStore.pauseGame()}
             onResume={() => gravityStore.resumeGame()}
-            onRestart={() => gravityStore.restartGame()}
+            onRestart={() => void beginGame(true)}
             onNewSet={handleNewSet}
           />
           <div
@@ -203,7 +227,7 @@ export function GravityApp() {
             ].includes(data.gameState as never) ? (
               <StartView
                 data={data}
-                onStart={() => gravityStore.startGame()}
+                onStart={() => void beginGame()}
                 onOptions={() => gravityStore.displayGameOptions()}
                 onDirections={() => gravityStore.displayGameDirections()}
                 onDifficultyChange={(d) => gravityStore.changeDifficultyLevel(d)}
@@ -219,13 +243,15 @@ export function GravityApp() {
                 level={data.level}
                 leaderboard={leaderboard}
                 currentTryIndex={currentTryIndex}
-                onRestart={() => gravityStore.restartGame()}
+                onRestart={() => void beginGame(true)}
                 onNewSet={handleNewSet}
               />
             ) : null}
           </div>
         </div>
       </div>
+      {scoreMessage.startsWith("Score not saved:")&&<button onClick={()=>setScoreRetry(n=>n+1)}>Retry saving score</button>}
+      {shared&&data.gameState===GAME_STATES.GAME_OVER&&<Leaderboard id={shared.set.id} refresh={scoreRefresh}/>}
     </div>
   );
 }

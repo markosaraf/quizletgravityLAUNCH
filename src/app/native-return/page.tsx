@@ -1,0 +1,3 @@
+'use client';
+import {useEffect,useState} from 'react';
+export default function NativeReturn(){const [message,setMessage]=useState('Completing sign-in…');useEffect(()=>{const p=new URLSearchParams(location.hash.slice(1));history.replaceState(null,'','/native-return');fetch('/api/native/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:p.get('code'),verifier:p.get('verifier')})}).then(r=>r.json()).then(r=>{if(r.ok)location.replace('/');else setMessage(r.error);}).catch(()=>setMessage('Connection failed. Please sign in again.'));},[]);return <main className="community-panel"><p>{message}</p><a href="/">Back to the game</a></main>;}

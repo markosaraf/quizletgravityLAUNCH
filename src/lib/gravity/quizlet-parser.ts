@@ -14,6 +14,8 @@ export interface QuizletImportResult {
   cards: QuizletCard[];
   skipped: number;
   via?: string;
+  creatorName?: string;
+  creatorUrl?: string;
 }
 
 const MAX_URL_LENGTH = 2_048;
@@ -300,7 +302,11 @@ export function parseQuizletHtml(html: string, url: string, setId: string, addit
   const cards = ordered.map(({ card }) => card).filter(({ term, definition }) => term && definition);
   const skipped = total - cards.length;
   if (cards.length < 2) throw new Error('The set needs at least two cards with text on both sides.');
-  return { title: set.title.trim(), url: normalized.url, setId, cards, skipped };
+  const setPage = redux.setPage as JsonObject;
+  const creator = [setPage.creator, setPage.creatorUser, set.creator].find(v => v && typeof v === 'object') as JsonObject | undefined;
+  const creatorName = typeof creator?.username === 'string' ? creator.username : undefined;
+  return { title: set.title.trim(), url: normalized.url, setId, cards, skipped,
+    ...(creatorName ? {creatorName, creatorUrl: `https://quizlet.com/${encodeURIComponent(creatorName)}/`} : {}) };
 }
 
 /** Validate the public batch response before following its pagination token. */

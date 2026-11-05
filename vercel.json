@@ -1,11 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/indexnow",
-      "schedule": "0 6 * * *"
-    }
-  ],
-  "git": {
-    "deploymentEnabled": false
-  }
-}
+{"git":{"deploymentEnabled":false},"headers":[{"source":"/(.*)","headers":[{"key":"X-Robots-Tag","value":"noindex, nofollow"}]}]}

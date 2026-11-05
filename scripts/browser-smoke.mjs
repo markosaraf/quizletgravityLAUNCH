@@ -1,0 +1,5 @@
+import {chromium} from '@playwright/test';
+import {randomBytes} from 'node:crypto';
+const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto((process.env.TEST_URL||'http://localhost:3035')+'/');await page.getByRole('button',{name:'Choose your name'}).click();const guest='guest_'+randomBytes(4).toString('hex');await page.getByLabel('Username',{exact:true}).fill(guest);await page.getByRole('button',{name:'Play as guest',exact:true}).click();await page.getByRole('button',{name:guest,exact:true}).waitFor({timeout:30000});await page.screenshot({path:'/tmp/quizzlet-preview-home.png',fullPage:false});
+await page.getByRole('link',{name:'Sets',exact:true}).click();await page.waitForTimeout(800);await page.screenshot({path:'/tmp/quizzlet-preview-sets.png',fullPage:false});console.log(JSON.stringify({pageErrors:errors,title:await page.title(),directoryVisible:await page.getByRole('heading',{name:'Find your next set'}).isVisible()}));await browser.close();

@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Poppins } from "next/font/google";
 import "./globals.css";
+import { CommunityNav } from "@/components/community/Community";
 import { Toaster } from "@/components/ui/toaster";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import { Analytics } from "@vercel/analytics/next";
 import { GAME_FEATURES } from "./seo-content";
 
 /* ----------------------------------------------------------------------------
@@ -12,7 +11,7 @@ import { GAME_FEATURES } from "./seo-content";
    Pick Option A (Vercel env var) or Option B (hard-code below).
 ---------------------------------------------------------------------------- */
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizletgravity.com";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizzlet-gravity-preview.vercel.app";
 
 /* ----------------------------------------------------------------------------
    FALLBACK FONT — Poppins, weight 400 ONLY (latin + latin-ext).
@@ -50,7 +49,7 @@ const poppins = Poppins({
    SEO strings (split per-platform for length tuning — see previous version
    for the rationale).
 ---------------------------------------------------------------------------- */
-const TITLE_LONG = "Quizlet Gravity Mode | Type to Defend Your Planet";
+const TITLE_LONG = "Quizzlet Gravity Preview | Shared Sets & Leaderboards";
 const TITLE_SHORT = "Quizlet – Gravity Mode";
 const DESC_LONG =
   "Import a public Quizlet set link, paste a term list, or upload a CSV to play Quizlet's recreated Gravity mode. Defend your planet from falling asteroids by typing the correct answers.";
@@ -153,11 +152,11 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(siteUrl),
     alternates: { canonical: "/" },
     robots: {
-      index: true,
-      follow: true,
+      index: false,
+      follow: false,
       googleBot: {
-        index: true,
-        follow: true,
+        index: false,
+        follow: false,
         // "large" lets Google show a LARGE image preview in search results
         // (required companion to the JSON-LD square thumbnail below).
         "max-image-preview": "large",
@@ -367,7 +366,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className={`antialiased ${poppins.variable}`}>
+      <body className={`antialiased ${poppins.variable}`}><CommunityNav />
         {/* `${poppins.variable}` defines --font-poppins (used by the
             hurmegeosans fallback stack in gravity.css and by
             --font-sans in globals.css). */}
@@ -378,8 +377,8 @@ export default async function RootLayout({
         />
         {children}
         <Toaster />
-        <SpeedInsights />
-        <Analytics />
+
+
       </body>
     </html>
   );
