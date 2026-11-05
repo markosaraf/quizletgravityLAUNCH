@@ -1,15 +1,42 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import * as Dialog from '@radix-ui/react-dialog';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { authClient } from '@/lib/community/auth-client';
 import './community.css';
 export async function api(path:string, body?:unknown){
  const response=await fetch('/api/community/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  const result=await response.json();if(!response.ok)throw Error(result.error||'Please try again.');return result;
 }
+function AccountDialog({open,onOpenChange,onDone}:{open:boolean;onOpenChange:(open:boolean)=>void;onDone?:()=>void}){
+ return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="community-dialog-overlay"/><Dialog.Content className="community-dialog" aria-describedby={undefined}><Dialog.Title className="sr-only">Player account</Dialog.Title><Dialog.Close className="community-dialog-close" aria-label="Close account">×</Dialog.Close><AccountPanel onDone={()=>{onOpenChange(false);onDone?.();}}/></Dialog.Content></Dialog.Portal></Dialog.Root>;
+}
 export function CommunityNav(){
  const {data:session}=authClient.useSession();const [open,setOpen]=useState(false);
- return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity <small>PREVIEW</small></Link><div><Link href="/sets">Sets</Link><button onClick={()=>setOpen(!open)}>{session?.user.username||session?.user.name||'Choose your name'}</button></div></nav>{open&&<AccountPanel onDone={()=>setOpen(false)}/>}</>;
+ return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity <small>PREVIEW</small></Link><div><Link href="/sets">Sets</Link><button aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)}>{session?.user.username||session?.user.name||'Choose your name'}</button></div></nav><AccountDialog open={open} onOpenChange={setOpen}/></>;
+}
+const subscribeImportUrl=()=>()=>{};
+const getImportUrl=()=>sessionStorage.getItem('gravity-import-url')||'';
+const getServerImportUrl=()=>'';
+function ImportQuizletSet(){
+ const router=useRouter();
+ const savedUrl=useSyncExternalStore(subscribeImportUrl,getImportUrl,getServerImportUrl);
+ const [draft,setUrl]=useState<string|null>(null);const url=draft??savedUrl;const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [accountOpen,setAccountOpen]=useState(false);
+ async function importSet(){
+  if(!url.trim())return;
+  setBusy(true);setError('');
+  try{
+   const session=await authClient.getSession();
+   if(!session.data){setAccountOpen(true);return;}
+   const response=await fetch('/api/import-quizlet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim()})});
+   const result=await response.json();
+   if(!response.ok)throw Error(result.error||'Unable to import this set.');
+   if(!result.sharedId)throw Error('The set could not be saved. Please try again.');
+   sessionStorage.removeItem('gravity-import-url');router.push('/sets/'+result.sharedId);
+  }catch(e){setError(e instanceof Error?e.message:'Please try again.');}finally{setBusy(false);}
+ }
+ return <section className="community-import"><form onSubmit={e=>{e.preventDefault();void importSet();}}><label htmlFor="quizlet-set-url">Import a Quizlet set</label><div className="community-import-row"><input id="quizlet-set-url" type="url" required placeholder="https://quizlet.com/…" value={url} onChange={e=>{setUrl(e.target.value);sessionStorage.setItem('gravity-import-url',e.target.value);}} aria-label="Quizlet set link"/><button className="community-primary" disabled={busy||!url.trim()}>{busy?'Importing…':'Import set'}</button></div></form>{error&&<p role="alert">{error}</p>}<AccountDialog open={accountOpen} onOpenChange={setAccountOpen} onDone={()=>void importSet()}/></section>;
 }
 export function AccountPanel({onDone}:{onDone?:()=>void}){
  const {data:session}=authClient.useSession();const [mode,setMode]=useState<'guest'|'login'|'signup'|'reset'>('guest');const [username,setUsername]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const [config,setConfig]=useState({google:false,recovery:false});
@@ -36,7 +63,7 @@ export function ShareSet({title,cards,original}:{title:string;cards:{term:string
 export function SetsDirectory(){
  const [query,setQuery]=useState('');const [sets,setSets]=useState<SetRecord[]>([]);const [offset,setOffset]=useState(0);const [more,setMore]=useState(false);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
  useEffect(()=>{let active=true;const timer=setTimeout(()=>{setLoading(true);api('sets?q='+encodeURIComponent(query)+'&offset='+offset).then(r=>{if(active){setSets(r.sets);setMore(r.hasMore);setError('');}}).catch(e=>active&&setError(e.message)).finally(()=>active&&setLoading(false));},200);return()=>{active=false;clearTimeout(timer);};},[query,offset]);
- return <main className="community-page"><h1>Find your next set</h1><p>Search shared study sets, then play together on the same leaderboard.</p><label>Search sets<input type="search" placeholder="Search by title or Quizlet creator" value={query} onChange={e=>{setQuery(e.target.value);setOffset(0);}}/></label>{error&&<p role="alert">{error}</p>}{loading?<p>Loading sets…</p>:<><div className="community-grid">{sets.map(s=><Link className="community-set" href={'/sets/'+s.id} key={s.id}><small>{s.term_count} terms</small><h2>{s.title}</h2><p>{s.source_url?'Quizlet creator: '+(s.creator_name||'Unavailable'):'Created by '+s.added_by}</p><span>Play & leaderboard →</span></Link>)}</div>{!sets.length&&<p>No sets yet. Import or create the first one.</p>}</>}<div className="community-pagination"><button disabled={!offset||loading} onClick={()=>setOffset(Math.max(0,offset-24))}>Previous</button><button disabled={!more||loading} onClick={()=>setOffset(offset+24)}>Next</button></div></main>;
+ return <main className="community-page"><h1>Find your next set</h1><p>Import your Quizlet set or find a shared set below.</p><ImportQuizletSet/><label>Search sets<input type="search" placeholder="Search by title or Quizlet creator" value={query} onChange={e=>{setQuery(e.target.value);setOffset(0);}}/></label>{error&&<p role="alert">{error}</p>}{loading?<p>Loading sets…</p>:<><div className="community-grid">{sets.map(s=><Link className="community-set" href={'/sets/'+s.id} key={s.id}><small>{s.term_count} terms</small><h2>{s.title}</h2><p>{s.source_url?'Quizlet creator: '+(s.creator_name||'Unavailable'):'Created by '+s.added_by}</p><span>Play & leaderboard →</span></Link>)}</div>{!sets.length&&<p>No sets yet. Import or create the first one.</p>}</>}<div className="community-pagination"><button disabled={!offset||loading} onClick={()=>setOffset(Math.max(0,offset-24))}>Previous</button><button disabled={!more||loading} onClick={()=>setOffset(offset+24)}>Next</button></div></main>;
 }
 export type SetRecord={id:string;title:string;term_count:number;creator_name?:string;creator_url?:string;source_url?:string;added_by:string;cards:{term:string;definition:string}[]};
 export function Leaderboard({id,refresh=0}:{id:string;refresh?:number}){
