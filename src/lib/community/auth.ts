@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth';
 import { createEmailVerificationToken } from 'better-auth/api';
 import { username, anonymous, oneTimeToken } from 'better-auth/plugins';
 import { db } from './db';
+import {displayPlayerName,normalizePlayerName,validPlayerName} from './usernames';
 import { sendRecovery, sendConfirmation } from './recovery';
 export const auth = betterAuth({
   database: db,
@@ -16,7 +17,7 @@ export const auth = betterAuth({
       const token=await createEmailVerificationToken(secret,user.email,undefined,3600,{userId:user.id});
       const link=new URL('/api/auth/verify-email',process.env.BETTER_AUTH_URL || 'http://localhost:3035');
       link.searchParams.set('token',token);link.searchParams.set('callbackURL','/email-confirmed');
-      await sendConfirmation(user.email,link.href,(user as {username?:string}).username);
+      await sendConfirmation(user.email,link.href,(user as {displayUsername?:string;username?:string}).displayUsername || (user as {username?:string}).username);
     }, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
   emailVerification: {
     sendOnSignUp: true,
@@ -25,7 +26,7 @@ export const auth = betterAuth({
     autoSignInAfterVerification: false,
     sendVerificationEmail: async ({user,url}) => {
       const link=new URL(url);link.searchParams.set('callbackURL','/email-confirmed');
-      await sendConfirmation(user.email,link.href,(user as {username?:string}).username);
+      await sendConfirmation(user.email,link.href,(user as {displayUsername?:string;username?:string}).displayUsername || (user as {username?:string}).username);
     },
   },
   socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
@@ -33,7 +34,7 @@ export const auth = betterAuth({
   } : {},
   rateLimit: { enabled: true, storage: 'database', window: 60, max: 30, customRules: { '/send-verification-email': {window:60,max:3}, '/sign-up/email': {window:60,max:5}, '/sign-in/username': {window:60,max:5} } },
   session: { expiresIn: 60 * 60 * 24 * 30, updateAge: 86400 },
-  plugins: [oneTimeToken({expiresIn:2,storeToken:"hashed",disableClientRequest:true}),username({ minUsernameLength: 3, maxUsernameLength: 24 }), anonymous({
+  plugins: [oneTimeToken({expiresIn:2,storeToken:"hashed",disableClientRequest:true}),username({ minUsernameLength: 3, maxUsernameLength: 24, usernameValidator: validPlayerName, usernameNormalization: normalizePlayerName, displayUsernameNormalization: displayPlayerName, validationOrder: {username:'post-normalization',displayUsername:'post-normalization'} }), anonymous({
     onLinkAccount: async ({ anonymousUser, newUser }) => {
       await db.query(`INSERT INTO high_scores(set_id,user_id,score,level,mode,achieved_at)
         SELECT set_id,$1,score,level,mode,achieved_at FROM high_scores WHERE user_id=$2

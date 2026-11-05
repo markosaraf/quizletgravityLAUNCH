@@ -1,11 +1,12 @@
 import {db} from './db';
+import {normalizePlayerName} from './usernames';
 import {auth} from './auth';
 
 /** Only an unverified credential account's password holder can correct a typo. */
 export async function correctPendingEmail(username:string,password:string,email:string) {
  const context=await auth.$context;
  const {rows}=await db.query(`SELECT u.id,u.email,u."emailVerified",u."isAnonymous",a.password FROM "user" u
- JOIN account a ON a."userId"=u.id AND a."providerId"='credential' WHERE lower(u.username)=lower($1)`,[username]);
+ JOIN account a ON a."userId"=u.id AND a."providerId"='credential' WHERE u.username=$1`,[normalizePlayerName(username)]);
  const user=rows[0];
  if(!user?.password){await context.password.hash(password);throw Error('Check your username and password.');}
  if(!await context.password.verify({hash:user.password,password}))throw Error('Check your username and password.');

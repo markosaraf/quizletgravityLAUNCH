@@ -3,10 +3,11 @@ import {randomBytes} from 'node:crypto';
 import {betterAuth} from 'better-auth';
 import {auth} from '../src/lib/community/auth';
 import {db} from '../src/lib/community/db';
+import {normalizePlayerName} from '../src/lib/community/usernames';
 import {correctPendingEmail} from '../src/lib/community/pending-email';
 const base='http://localhost:3035';
 const suffix=randomBytes(6).toString('hex');
-const username='verify_'+suffix,email=`verify-${suffix}@example.test`,corrected=`correct-${suffix}@example.test`;
+const username='Emilia Dürig '+suffix.slice(0,6),email=`verify-${suffix}@example.test`,corrected=`correct-${suffix}@example.test`;
 const password=randomBytes(12).toString('hex');
 const messages:string[]=[];
 const originalFetch=globalThis.fetch;
@@ -40,7 +41,7 @@ try {
  assert.equal(messages.length,2);
  const repeated=await request('/sign-up/email',{username:'other_'+suffix,email,password:'DifferentPass123!',name:'Another name',callbackURL:'/email-confirmed'});
  assert.equal(repeated.response.status,200);assert.equal(messages.length,3);
- assert.equal((await db.query('SELECT username FROM "user" WHERE id=$1',[userId])).rows[0].username,username);
+ assert.equal((await db.query('SELECT username FROM "user" WHERE id=$1',[userId])).rows[0].username,normalizePlayerName(username));
  assert.equal((await db.query('SELECT count(*) FROM "user" WHERE email=$1',[email])).rows[0].count,'1');
  const resentLink=latestLink();assert.equal(resentLink.pathname,'/api/auth/verify-email');
  assert.equal(messages.at(-1)?.includes('Your username: '+username),true);
@@ -61,8 +62,10 @@ try {
  const reused=await request('/reset-password',{token:resetToken,newPassword});assert(reused.response.status>=400);
  assert.equal((await request('/sign-in/username',{username,password})).response.status,401);
  assert.equal((await request('/sign-in/username',{username,password:newPassword})).response.status,200);
+ const variant=await request('/sign-in/username',{username:(' '+username.toUpperCase()+' ').normalize('NFD'),password:newPassword});assert.equal(variant.response.status,200);assert.equal(variant.data.user.displayUsername,username);
+ const duplicateName=await request('/sign-up/email',{username:username.toUpperCase(),email:'another-'+suffix+'@example.test',password,name:'Duplicate'});assert(duplicateName.response.status>=400);
  const oldSession=await request('/get-session',undefined,signed.cookie);assert.equal(oldSession.data,null);
- console.log('PASS: no signup session; automatic verification; unverified login blocked; typo correction requires password; old link rejected; resend; verification; verified account protected; password recovery; single-use reset; session revocation. No real email sent.');
+ console.log('PASS: Unicode/spaced username signup and case-insensitive login; duplicate name rejected; no signup session; automatic verification; unverified login blocked; typo correction requires password; old link rejected; resend; verification; verified account protected; password recovery; single-use reset; session revocation. No real email sent.');
 }finally{
  globalThis.fetch=originalFetch;
  if(userId)await db.query('DELETE FROM "user" WHERE id=$1',[userId]);
