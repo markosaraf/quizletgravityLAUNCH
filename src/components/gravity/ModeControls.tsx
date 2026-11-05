@@ -84,10 +84,8 @@ function ModeControlsBase({
 
 export const ModeControls = memo(ModeControlsBase);
 
-/* ---------------- Site header ----------------
-   On desktop: shows Q logo + "Quizlet" + set title.
-   On mobile: shows Q logo + score + level + pause/restart/new-set buttons
-   (set title is hidden on mobile to make room for the controls). */
+/* Mobile game controls. The community navigation provides the only logo.
+   Desktop retains its score and controls in the sidebar. */
 interface SiteHeaderProps {
   title: string;
   /** Score — only shown on mobile (desktop uses the sidebar). */
@@ -96,8 +94,7 @@ interface SiteHeaderProps {
   level?: number;
   /** Current game state — used to determine Pause vs Resume label. */
   gameState?: string;
-  /** Whether to render the mobile controls block. When false (import screen),
-      the header only shows the Q logo + title. */
+  /** Hide the controls row on the import screen. */
   showMobileControls?: boolean;
   onPause?: () => void;
   onResume?: () => void;
@@ -133,7 +130,6 @@ function HeaderIcon({ name }: { name: keyof typeof HEADER_ICON_PATHS }) {
 }
 
 export function SiteHeader({
-  title,
   points = 0,
   level = 1,
   gameState,
@@ -147,28 +143,10 @@ export function SiteHeader({
   const pauseDisabled = gameState === GAME_STATES.COPY_ANSWER;
   const pauseHandler = isPaused ? onResume : onPause;
 
-  return (
-    <header className="GravitySiteHeader">
-      <div className="GravitySiteHeader-logo">
-        <span className="GravitySiteHeader-logoMark" aria-label="Q">
-          {/* Light mode shows the gold Q; dark mode shows the white Q.
-              CSS swaps visibility based on [data-theme] on <html>. */}
-          <img
-            src="/quizlet-q-logo-gold.svg"
-            alt=""
-            aria-hidden="true"
-            className="GravitySiteHeader-logoMark-gold"
-          />
-          <img
-            src="/quizlet-q-logo-white.svg"
-            alt=""
-            aria-hidden="true"
-            className="GravitySiteHeader-logoMark-white"
-          />
-        </span>
-        <span className="GravitySiteHeader-logoText">Quizlet</span>
-      </div>
+  if (!showMobileControls) return null;
 
+  return (
+    <header className="GravitySiteHeader" aria-label="Game controls">
       {showMobileControls ? (
         <div className="GravitySiteHeader-mobileControls">
           <div className="GravitySiteHeader-stat">
