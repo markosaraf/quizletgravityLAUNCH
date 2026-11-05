@@ -1,17 +1,27 @@
 import { betterAuth } from 'better-auth';
 import { username, anonymous, oneTimeToken } from 'better-auth/plugins';
 import { db } from './db';
-import { sendRecovery } from './recovery';
+import { sendRecovery, sendConfirmation } from './recovery';
 export const auth = betterAuth({
   database: db,
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3035',
   secret: process.env.BETTER_AUTH_SECRET,
   appName: 'Quizzlet Gravity',
-  emailAndPassword: { enabled: true, minPasswordLength: 8, maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
+  emailAndPassword: { enabled: true, requireEmailVerification: true, autoSignIn: false, minPasswordLength: 8, maxPasswordLength: 128, resetPasswordTokenExpiresIn: 1800, revokeSessionsOnPasswordReset: true, ...(process.env.GMAIL_REFRESH_TOKEN ? {sendResetPassword: async ({user,url}:{user:{email:string};url:string}) => sendRecovery(user.email,url)} : {}) },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    expiresIn: 3600,
+    autoSignInAfterVerification: false,
+    sendVerificationEmail: async ({user,url}) => {
+      const link=new URL(url);link.searchParams.set('callbackURL','/email-confirmed');
+      await sendConfirmation(user.email,link.href);
+    },
+  },
   socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
     google: { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }
   } : {},
-  rateLimit: { enabled: true, storage: 'database', window: 60, max: 30 },
+  rateLimit: { enabled: true, storage: 'database', window: 60, max: 30, customRules: { '/send-verification-email': {window:60,max:3}, '/sign-up/email': {window:60,max:5}, '/sign-in/username': {window:60,max:5} } },
   session: { expiresIn: 60 * 60 * 24 * 30, updateAge: 86400 },
   plugins: [oneTimeToken({expiresIn:2,storeToken:"hashed",disableClientRequest:true}),username({ minUsernameLength: 3, maxUsernameLength: 24 }), anonymous({
     onLinkAccount: async ({ anonymousUser, newUser }) => {

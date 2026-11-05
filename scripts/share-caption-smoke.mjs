@@ -20,7 +20,7 @@ try{
   await input.fill(caption.replaceAll('\n',' '));
   assert(await input.evaluate(e=>e.checkValidity()));
   await page.getByRole('button',{name:'Import set',exact:true}).click();
-  await page.waitForURL('**/sets/0d929f0c-22cf-441b-ab15-83ac76974c59',{timeout:30000});
+  await page.waitForURL('**/1181229873/*-flash-cards',{timeout:30000});
   await page.getByRole('heading',{name:'Voci Mission 6',exact:true}).waitFor();
  }
  await page.goto(base+'/');

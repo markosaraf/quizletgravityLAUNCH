@@ -11,7 +11,7 @@ export async function POST(request:NextRequest,{params}:{params:Promise<{action:
  try{const {action}=await params;const text=await request.text();if(text.length>4096)return json({error:'Request too large'},413);const input=JSON.parse(text);
  if(action==='authorize'){
   if(!/^[A-Za-z0-9_-]{43}$/.test(input.challenge||''))return json({error:'Invalid challenge'},400);
-  const session=await auth.api.getSession({headers:request.headers});if(!session||session.user.isAnonymous)return json({error:'Sign in to continue'},401);
+  const session=await auth.api.getSession({headers:request.headers});if(!session||session.user.isAnonymous||!session.user.emailVerified)return json({error:'Sign in to continue'},401);
   const ott=await auth.api.generateOneTimeToken({headers:request.headers});const code=randomBytes(32).toString('base64url');
   await db.query('DELETE FROM native_handoffs WHERE expires_at<now()');
   await db.query("INSERT INTO native_handoffs(code_hash,challenge,encrypted_token,expires_at) VALUES($1,$2,$3,now()+interval '2 minutes')",[hash(code),input.challenge,crypt(ott.token)]);return json({code});

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { auth } from '@/lib/community/auth';
 import { db } from '@/lib/community/db';
 import { fingerprint } from '@/lib/community/sets';
+import { correctPendingEmail } from '@/lib/community/pending-email';
 import { z } from 'zod';
 export const runtime='nodejs';
 const noCache={'Cache-Control':'no-store'};
@@ -27,7 +28,7 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{path:str
  if(path[0]==='config')return json({google:!!process.env.GOOGLE_CLIENT_ID,recovery:!!process.env.GMAIL_REFRESH_TOKEN});
  if(path[0]==='sets'&&path.length===1){
  const q=(request.nextUrl.searchParams.get('q')||'').trim().slice(0,120);const offset=page(request);
- const {rows}=await db.query(`SELECT s.id,s.title,s.creator_name,s.creator_url,s.source_url,s.term_count,s.created_at,coalesce(u.username,u.name,'Community') as added_by
+ const {rows}=await db.query(`SELECT s.id,s.public_id,s.title,s.creator_name,s.creator_url,s.source_url,s.term_count,s.created_at,coalesce(u.username,u.name,'Community') as added_by
  FROM shared_sets s LEFT JOIN "user" u ON u.id=s.created_by
  WHERE $1='' OR s.search_document @@ websearch_to_tsquery('simple',$1) OR lower(s.title) LIKE $2 ESCAPE '\\'
  ORDER BY s.created_at DESC,s.id LIMIT 25 OFFSET $3`,[q,'%'+q.toLowerCase().replace(/[\\%_]/g,'\\$&')+'%',offset]);
@@ -48,12 +49,22 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{path:str
 export async function POST(request:NextRequest,{params}:{params:Promise<{path:string[]}>}){
  try{
  const origin=request.headers.get('origin');if(request.headers.get('sec-fetch-site')==='cross-site'||(origin&&origin!==request.nextUrl.origin))return json({error:'Origin not allowed'},403);
+ const {path}=await params;
+ if(path.join('/')==='pending-email'){
+  await limit(request,'email-correction',3);
+  const v=z.object({username:z.string().min(3).max(24),password:z.string().min(1).max(128),email:z.email().max(254)}).parse(await body(request));
+  try{await correctPendingEmail(v.username,v.password,v.email.trim().toLowerCase());
+   await auth.api.sendVerificationEmail({body:{email:v.email.trim().toLowerCase(),callbackURL:'/email-confirmed'}});
+   return json({sent:true});
+  }catch(e){return json({error:e instanceof Error?e.message:'Unable to update email. Try again.'},400);}
+ }
  const session=await auth.api.getSession({headers:request.headers});if(!session)return json({error:'Choose a guest name or sign in first.'},401);
- await limit(request,'write',30);const {path}=await params;const input=await body(request);
+ if(!session.user.isAnonymous&&!session.user.emailVerified)return json({error:'Confirm your email before continuing.'},403);
+ await limit(request,'write',30);const input=await body(request);
  if(path[0]==='sets'&&path.length===1){
  const v=z.object({title:z.string().trim().min(1).max(200),cards:cardsSchema}).parse(input);
  const {rows}=await db.query(`INSERT INTO shared_sets(fingerprint,title,created_by,cards,term_count) VALUES($1,$2,$3,$4,$5)
- ON CONFLICT(fingerprint) DO UPDATE SET fingerprint=EXCLUDED.fingerprint RETURNING id,title`,['custom:'+fingerprint(v.cards),v.title,session.user.id,JSON.stringify(v.cards),v.cards.length]);return json(rows[0]);
+ ON CONFLICT(fingerprint) DO UPDATE SET fingerprint=EXCLUDED.fingerprint RETURNING id,public_id,title`,['custom:'+fingerprint(v.cards),v.title,session.user.id,JSON.stringify(v.cards),v.cards.length]);return json(rows[0]);
  }
  if(path[0]==='runs'&&path.length===1){
  const v=z.object({setId:uuid,mode:z.enum(['SLOTH','BEGINNER','INTERMEDIATE','EXPERT','MAD_MAX'])}).parse(input);

@@ -44,3 +44,12 @@ CREATE TABLE IF NOT EXISTS native_handoffs (
  encrypted_token text NOT NULL,
  expires_at timestamptz NOT NULL
 );
+
+-- Public URLs use Quizlet's numeric-ID/title-flash-cards structure.
+-- A separate high numeric range prevents custom sets colliding with imported IDs.
+CREATE SEQUENCE IF NOT EXISTS shared_set_public_ids START WITH 1000000000000000;
+ALTER TABLE shared_sets ADD COLUMN IF NOT EXISTS public_id text;
+UPDATE shared_sets SET public_id=coalesce(quizlet_id,nextval('shared_set_public_ids')::text) WHERE public_id IS NULL;
+ALTER TABLE shared_sets ALTER COLUMN public_id SET DEFAULT nextval('shared_set_public_ids')::text;
+ALTER TABLE shared_sets ALTER COLUMN public_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS sets_public_id ON shared_sets(public_id);
