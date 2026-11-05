@@ -9,7 +9,7 @@ export async function api(path:string, body?:unknown){
 }
 export function CommunityNav(){
  const {data:session}=authClient.useSession();const [open,setOpen]=useState(false);
- return <><nav className="community-nav"><Link href="/">Quizzlet Gravity <small>PREVIEW</small></Link><div><Link href="/sets">Sets</Link><button onClick={()=>setOpen(!open)}>{session?.user.username||session?.user.name||'Choose your name'}</button></div></nav>{open&&<AccountPanel onDone={()=>setOpen(false)}/>}</>;
+ return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity <small>PREVIEW</small></Link><div><Link href="/sets">Sets</Link><button onClick={()=>setOpen(!open)}>{session?.user.username||session?.user.name||'Choose your name'}</button></div></nav>{open&&<AccountPanel onDone={()=>setOpen(false)}/>}</>;
 }
 export function AccountPanel({onDone}:{onDone?:()=>void}){
  const {data:session}=authClient.useSession();const [mode,setMode]=useState<'guest'|'login'|'signup'|'reset'>('guest');const [username,setUsername]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const [config,setConfig]=useState({google:false,recovery:false});
