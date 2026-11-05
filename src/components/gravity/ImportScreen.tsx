@@ -1,5 +1,6 @@
 'use client';
 
+import { quizletPasteValue } from '@/lib/gravity/quizlet-share-input';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   loadImportedSet,
@@ -444,7 +445,15 @@ export function ImportScreen({ onStart }: Props) {
                   </label>
                   <input
                     id="quizlet-url-input"
-                    type="url"
+                    type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      setQuizletUrl(quizletPasteValue(e.clipboardData.getData('text/plain')));
+                      setQuizletError(null);
+                    }}
                     className="GravityImportQuizlet-input"
                     value={quizletUrl}
                     placeholder={STRINGS.import.quizlet.url_placeholder}
