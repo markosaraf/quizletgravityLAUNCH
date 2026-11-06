@@ -2629,3 +2629,21 @@
   outline: 2px solid #4255b4;
   outline-offset: 1px;
 }
+
+/* Create set uses the same card width and reading scale as Sets. */
+.GravityImportView{padding:32px 12px}
+.GravityImportView-inner{max-width:1050px}
+.GravityImportCard{padding:28px;color:var(--community-text)}
+.GravityImportCard .community-directory-heading h1{font-size:34px;font-weight:700;line-height:1.2}
+.GravityImportCard .GravityImportQuizlet-label{font-size:16px;font-weight:600;letter-spacing:normal;text-transform:none;flex-basis:100%}
+.GravityImportCard .GravityImportQuizlet-input,.GravityImportCard .GravityImportTextarea,.GravityImportCard .GravityImportPreview-input{font-size:16px}
+.GravityImportCard .GravityImportQuizlet-input{min-height:44px;padding:12px}
+.GravityImportCard .GravityImportQuizlet-hint,.GravityImportCard .GravityImportQuizlet-status,.GravityImportCard .GravityImportQuizlet-error{font-size:16px;line-height:1.5}
+.GravityImportCard .GravityImportQuizlet-button,.GravityImportCard .GravityImportTab,.GravityImportCard .GravityImportQuizlet-fetch,.GravityImportCard .UIButton{font-size:15px;font-weight:600;min-height:44px;padding:10px 16px}
+@media(max-width:600px){
+  .GravityImportView{padding:16px 12px}
+  .GravityImportCard{padding:20px}
+  .GravityImportCard .community-directory-heading h1{font-size:23px}
+  .GravityImportCard .GravityImportQuizlet-row{display:grid;grid-template-columns:minmax(0,1fr) auto}
+  .GravityImportCard .GravityImportQuizlet-label{grid-column:1/-1}
+}

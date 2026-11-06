@@ -39,3 +39,7 @@ body{background:#2e384f url('/assets/gravity/intro-bg@2x.jpg') no-repeat bottom 
 .community-directory-heading .community-theme{margin-bottom:0}
 .gravity-theme-changing *, .gravity-theme-changing *::before, .gravity-theme-changing *::after{transition:none!important}
 @media(max-width:600px){.community-directory-heading{gap:10px}.community-directory-heading h1{font-size:23px;flex:1;min-width:140px}.community-nav>div>a{white-space:nowrap}.community-nav button{max-width:44%;}}
+
+/* Gold divider belongs to the shared navigation on every screen. */
+.community-nav a.community-nav-sets{border-left:2px solid #d4af37;padding-left:16px}
+@media(max-width:600px){.community-nav a.community-nav-sets{padding-left:12px}}

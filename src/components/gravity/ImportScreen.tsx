@@ -337,11 +337,11 @@ export function ImportScreen({ onStart }: Props) {
     <div className="gravity-root">
       <div className="GravityImportView">
         <div className="GravityImportView-inner">
-          <h1 className="GravityImportView-title">{STRINGS.import.title}</h1>
-          <p className="GravityImportView-subtitle">{STRINGS.import.subtitle}</p>
-
           <div className="GravityImportCard">
-            <ThemeToggle/>
+            <div className="community-directory-heading">
+              <h1>Create set</h1>
+              <ThemeToggle/>
+            </div>
 
             {/* One selected import method; the editable preview is shared. */}
             <div className="GravityImportTopbar">
