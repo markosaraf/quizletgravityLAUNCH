@@ -23,7 +23,7 @@ try{
   await page.waitForURL('**/1181229873/*-flash-cards',{timeout:30000});
   await page.getByRole('heading',{name:'Voci Mission 6',exact:true}).waitFor();
  }
- await page.goto(base+'/');
+ await page.goto(base+'/create-set');
  await page.getByRole('button',{name:'Import Quizlet Set',exact:true}).click();
  const gameInput=page.locator('#quizlet-url-input');await paste(gameInput,captions[0]);assert.equal(await gameInput.inputValue(),url);
  console.log('PASS: German/English share captions, multiline paste, direct caption submission, same canonical shared set, both import fields.');

@@ -154,7 +154,7 @@ export function GravityApp({shared}:{shared?:{set:GravitySet;terms:GravityTerm[]
   }, [started, data]);
 
   const handleNewSet = useCallback(() => {
-    if (shared) { window.location.assign("/"); return; }
+    if (shared) { window.location.assign("/create-set"); return; }
     gravityStore.dispose();
     setStarted(false);
     setLeaderboard([]);

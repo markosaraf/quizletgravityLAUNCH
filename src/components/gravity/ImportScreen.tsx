@@ -5,16 +5,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   loadImportedSet,
   loadStoredSeparator,
-  loadStoredTheme,
   parseCsv,
   parsePastedList,
   readFileAsText,
   saveImportedSet,
   saveStoredSeparator,
-  saveStoredTheme,
 } from '@/lib/gravity/parse';
-import type { Separator, Theme } from '@/lib/gravity/parse';
+import type { Separator } from '@/lib/gravity/parse';
 import { importedCardsToTerms } from '@/lib/gravity/import-cards';
+import { ThemeToggle } from '@/components/community/ThemeToggle';
 import { ShareSet } from '@/components/community/Community';
 import { STRINGS, format } from '@/lib/gravity/strings';
 import type { GravitySet, GravityTerm } from '@/lib/gravity/types';
@@ -26,7 +25,6 @@ interface Props {
 const SAMPLE = 'helio-, sun\ngeo-, earth\nbio-, life\nchrom-, color';
 
 const SEPARATOR_ORDER: Separator[] = ['comma', 'semicolon', 'dash'];
-const THEME_ORDER: Theme[] = ['light', 'dark'];
 type ImportTab = 'quizlet' | 'paste' | 'file';
 
 /** Progress-bar animation: elapsed time (ms) → whole-number percentage
@@ -102,30 +100,6 @@ export function ImportScreen({ onStart }: Props) {
   useEffect(() => {
     const t = setTimeout(() => setSeparator(loadStoredSeparator()), 0);
     return () => clearTimeout(t);
-  }, []);
-
-  // User-selected theme (dark / light). Persisted to localStorage. Defaults
-  // to 'light' (the site-wide default — see also the pre-paint theme script
-  // in src/app/layout.tsx). Applied to <html data-theme> post-hydration to
-  // avoid SSR mismatch.
-  const [theme, setTheme] = useState<Theme>('light');
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const stored = loadStoredTheme();
-      setTheme(stored);
-      if (typeof document !== 'undefined') {
-        document.documentElement.setAttribute('data-theme', stored);
-      }
-    }, 0);
-    return () => clearTimeout(t);
-  }, []);
-
-  const handleThemeChange = useCallback((next: Theme) => {
-    setTheme(next);
-    saveStoredTheme(next);
-    if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', next);
-    }
   }, []);
 
   // Public Quizlet imports use one server request. Keep the returned cards
@@ -373,24 +347,7 @@ export function ImportScreen({ onStart }: Props) {
           <p className="GravityImportView-subtitle">{STRINGS.import.subtitle}</p>
 
           <div className="GravityImportCard">
-            <div className="GravityImportTheme" role="group" aria-label={STRINGS.import.theme_selector.label}>
-              <span className="GravityImportTheme-label">
-                {STRINGS.import.theme_selector.label}:
-              </span>
-              <div className="GravityImportTheme-toggle">
-                {THEME_ORDER.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`GravityImportTheme-option ${theme === t ? 'is-selected' : ''}`}
-                    onClick={() => handleThemeChange(t)}
-                    aria-pressed={theme === t}
-                  >
-                    {STRINGS.import.theme_selector[t]}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ThemeToggle/>
 
             {/* One selected import method; the editable preview is shared. */}
             <div className="GravityImportTopbar">
