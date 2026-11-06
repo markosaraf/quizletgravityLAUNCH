@@ -95,7 +95,7 @@ export const FAQ_ITEMS: FaqItem[] = [
 
 export function HowToSection() {
   return (
-    <section className="GravitySEO" aria-labelledby="how-to-play-heading">
+    <section id="howto" className="GravitySEO" aria-labelledby="how-to-play-heading">
       <div className="GravitySEO-inner">
         <h2 id="how-to-play-heading" className="GravitySEO-title">
           How to play
@@ -120,7 +120,7 @@ export function HowToSection() {
 
 export function FaqSection() {
   return (
-    <section className="GravitySEO" aria-labelledby="faq-heading">
+    <section id="faq" className="GravitySEO" aria-labelledby="faq-heading">
       <div className="GravitySEO-inner">
         <h2 id="faq-heading" className="GravitySEO-title">
           Frequently asked questions
@@ -140,4 +140,35 @@ export function FaqSection() {
       </div>
     </section>
   );
+}
+
+/** Always present on the Sets landing pages, including before hydration. */
+export function SetsLandingHelp({path = "/"}: {path?: string}) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizletgravity.com";
+  const url = new URL(path, siteUrl).href;
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "@id": `${url}#faq`,
+      url,
+      name: "Quizzlet Gravity — Frequently asked questions",
+      mainEntity: FAQ_ITEMS.map(({question, answer}) => ({
+        "@type": "Question",
+        name: question,
+        acceptedAnswer: {"@type": "Answer", text: answer},
+      })),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "@id": `${url}#howto`,
+      name: "How to play Quizzlet Gravity",
+      step: HOW_TO_STEPS.map((text, i) => ({
+        "@type": "HowToStep", position: i + 1, text,
+      })),
+    },
+  ];
+  return <><HowToSection/><FaqSection/><script type="application/ld+json"
+    dangerouslySetInnerHTML={{__html: JSON.stringify(structuredData).replace(/</g, "\\u003c")}}/></>;
 }
