@@ -43,3 +43,8 @@ body{background:#2e384f url('/assets/gravity/intro-bg@2x.jpg') no-repeat bottom 
 /* Gold divider belongs to the shared navigation on every screen. */
 .community-nav a.community-nav-sets{border-left:2px solid #d4af37;padding-left:16px}
 @media(max-width:600px){.community-nav a.community-nav-sets{padding-left:12px}}
+
+/* Account alternatives follow the fields, together on desktop and stacked on phones. */
+.community-auth-actions{display:flex;gap:12px;margin-top:16px}
+.community-auth-actions>button{flex:1}
+@media(max-width:600px){.community-auth-actions{flex-direction:column}}
