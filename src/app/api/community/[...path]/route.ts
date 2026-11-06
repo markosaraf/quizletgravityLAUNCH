@@ -28,7 +28,7 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{path:str
  if(path[0]==='config')return json({google:!!process.env.GOOGLE_CLIENT_ID,recovery:!!process.env.GMAIL_REFRESH_TOKEN});
  if(path[0]==='sets'&&path.length===1){
  const q=(request.nextUrl.searchParams.get('q')||'').trim().slice(0,120);const offset=page(request);
- const {rows}=await db.query(`SELECT s.id,s.public_id,s.title,s.creator_name,s.creator_url,s.source_url,s.term_count,s.created_at,coalesce(u.username,u.name,'Community') as added_by
+ const {rows}=await db.query(`SELECT s.id,s.public_id,s.quizlet_id,s.title,s.creator_name,s.creator_url,s.source_url,s.term_count,s.created_at,coalesce(u."displayUsername",u.username,u.name,'Community') as added_by
  FROM shared_sets s LEFT JOIN "user" u ON u.id=s.created_by
  WHERE $1='' OR s.search_document @@ websearch_to_tsquery('simple',$1) OR lower(s.title) LIKE $2 ESCAPE '\\'
  ORDER BY s.created_at DESC,s.id LIMIT 25 OFFSET $3`,[q,'%'+q.toLowerCase().replace(/[\\%_]/g,'\\$&')+'%',offset]);
@@ -40,7 +40,7 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{path:str
  FROM high_scores h JOIN "user" u ON u.id=h.user_id WHERE h.set_id=$1 ORDER BY h.score DESC,h.achieved_at,u.id LIMIT 51 OFFSET $2`,[path[1],page(request)]);
  return json({entries:rows.slice(0,50),hasMore:rows.length>50,offset:page(request)});
  }
- const {rows}=await db.query(`SELECT s.*,coalesce(u.username,u.name,'Community') AS added_by FROM shared_sets s LEFT JOIN "user" u ON u.id=s.created_by WHERE s.id=$1`,[path[1]]);
+ const {rows}=await db.query(`SELECT s.*,coalesce(u."displayUsername",u.username,u.name,'Community') AS added_by FROM shared_sets s LEFT JOIN "user" u ON u.id=s.created_by WHERE s.id=$1`,[path[1]]);
  return rows[0]?json(rows[0]):json({error:'Set not found'},404);
  }
  return json({error:'Not found'},404);
@@ -62,9 +62,19 @@ export async function POST(request:NextRequest,{params}:{params:Promise<{path:st
  if(!session.user.isAnonymous&&!session.user.emailVerified)return json({error:'Confirm your email before continuing.'},403);
  await limit(request,'write',30);const input=await body(request);
  if(path[0]==='sets'&&path.length===1){
- const v=z.object({title:z.string().trim().min(1).max(200),cards:cardsSchema}).parse(input);
- const {rows}=await db.query(`INSERT INTO shared_sets(fingerprint,title,created_by,cards,term_count) VALUES($1,$2,$3,$4,$5)
- ON CONFLICT(fingerprint) DO UPDATE SET fingerprint=EXCLUDED.fingerprint RETURNING id,public_id,title`,['custom:'+fingerprint(v.cards),v.title,session.user.id,JSON.stringify(v.cards),v.cards.length]);return json(rows[0]);
+ const v=z.object({title:z.string().trim().min(1).max(200),cards:cardsSchema,sourceSetId:uuid.optional()}).parse(input);
+ let source: {id:string;public_id:string;title:string;cards:{term:string;definition:string}[];creator_name:string|null;creator_url:string|null;source_url:string|null}|undefined;
+ if(v.sourceSetId){
+  const {rows}=await db.query('SELECT id,public_id,title,cards,creator_name,creator_url,source_url FROM shared_sets WHERE id=$1 AND quizlet_id IS NOT NULL',[v.sourceSetId]);
+  source=rows[0];
+  if(!source)return json({error:'The original Quizlet set could not be found. Import it again.'},400);
+  // A renamed, reordered or whitespace-only copy must reuse the original leaderboard.
+  if(fingerprint(source.cards)===fingerprint(v.cards))return json(source);
+ }
+ // Attribution comes from the saved source and authenticated user, never client-supplied names.
+ const key=source?'adapted:'+source.id+':'+session.user.id+':'+fingerprint(v.cards):'custom:'+fingerprint(v.cards);
+ const {rows}=await db.query(`INSERT INTO shared_sets(fingerprint,title,created_by,cards,term_count,creator_name,creator_url,source_url) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+ ON CONFLICT(fingerprint) DO UPDATE SET fingerprint=EXCLUDED.fingerprint RETURNING id,public_id,title`,[key,v.title,session.user.id,JSON.stringify(v.cards),v.cards.length,source?.creator_name??null,source?.creator_url??null,source?.source_url??null]);return json(rows[0]);
  }
  if(path[0]==='runs'&&path.length===1){
  const v=z.object({setId:uuid,mode:z.enum(['SLOTH','BEGINNER','INTERMEDIATE','EXPERT','MAD_MAX'])}).parse(input);

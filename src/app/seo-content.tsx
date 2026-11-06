@@ -75,7 +75,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How do I create my own set?",
     answer:
-      "Open Create set and paste terms and definitions, one pair per line, or upload a CSV. Commas, semicolons, dashes and tabs are supported as separators. Check and edit the terms before playing. You need at least two pairs, and you can star terms for Starred-only practice.",
+      "Open Create set and paste terms and definitions, one pair per line, or upload a CSV. Commas, semicolons, dashes and tabs are supported as separators. Check and edit the terms before playing. You need at least two pairs, and you can star terms for Starred-only practice. To adapt an existing set, choose Edit a Quizlet set and change its terms or definitions. Your shared version credits both the original Quizlet set creator and you as the Quizlet Gravity set creator. Unchanged imports reuse the original set and leaderboard.",
   },
   {
     question: "How do I share a set with friends?",

@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {chromium} from '@playwright/test';
+import pg from 'pg';
+
+const base='http://localhost:3035';
+assert.equal(new URL(process.env.DATABASE_URL).pathname,'/quizzlet_preview');
+const db=new pg.Pool({connectionString:process.env.DATABASE_URL});
+const browser=await chromium.launch();
+const context=await browser.newContext();
+const page=await context.newPage();
+const tag='Attribution '+randomUUID();
+let uid,sourceId;
+const createdIds=[];
+const cards=[{term:'sun',definition:'Sonne '+tag},{term:'moon',definition:'Mond'}];
+async function post(path,data){const r=await context.request.post(base+path,{data,headers:{Origin:base}});return {status:r.status(),data:await r.json()};}
+try{
+ const sign=await post('/api/auth/sign-in/anonymous',{});
+ assert.equal(sign.status,200);uid=sign.data.user.id;
+ await post('/api/auth/update-user',{username:'editor'+Date.now(),displayUsername:'Test Editor',name:'Test Editor'});
+ const source=await db.query(`INSERT INTO shared_sets(quizlet_id,fingerprint,title,cards,term_count,creator_name,creator_url,source_url) VALUES($1,$2,$3,$4,2,'Source Author','https://quizlet.com/SourceAuthor','https://quizlet.com/987654321/test-flash-cards') RETURNING id`,[randomUUID(),'test:'+tag,tag,JSON.stringify(cards)]);
+ sourceId=source.rows[0].id;
+ const same=await post('/api/community/sets',{title:'Renamed',cards:[...cards].reverse(),sourceSetId:sourceId});
+ assert.equal(same.status,200);assert.equal(same.data.id,sourceId);
+ const edited=[cards[0],{term:'moon',definition:'Lune'}];
+ const edit=await post('/api/community/sets',{title:tag+' edited',cards:edited,sourceSetId:sourceId,creator_name:'Spoofed'});
+ assert.equal(edit.status,200);assert.notEqual(edit.data.id,sourceId);createdIds.push(edit.data.id);
+ const again=await post('/api/community/sets',{title:tag,cards:edited,sourceSetId:sourceId});assert.equal(again.data.id,edit.data.id);
+ const custom=await post('/api/community/sets',{title:tag+' custom',cards:[cards[0],{term:'test',definition:tag}]});assert.equal(custom.status,200);createdIds.push(custom.data.id);
+ const invalid=await post('/api/community/sets',{title:tag,cards:edited,sourceSetId:custom.data.id});assert.equal(invalid.status,400);
+ const {rows}=await db.query('SELECT * FROM shared_sets WHERE id=$1',[edit.data.id]);
+ assert.equal(rows[0].creator_name,'Source Author');assert.equal(rows[0].created_by,uid);assert.equal(rows[0].quizlet_id,null);assert.deepEqual(rows[0].cards,edited);
+ const original=await db.query('SELECT cards FROM shared_sets WHERE id=$1',[sourceId]);assert.deepEqual(original.rows[0].cards,cards);
+ await page.goto(base+'/sets');await page.getByPlaceholder('Search by title or Quizlet creator').fill(tag);
+ const sourceCard=page.locator('.community-set').filter({has:page.getByRole('heading',{name:tag,exact:true})});
+ await sourceCard.waitFor();assert.match(await sourceCard.innerText(),/Original Quizlet set creator: Source Author/);assert.doesNotMatch(await sourceCard.innerText(),/Quizlet Gravity set creator:/);
+ const editCard=page.locator('.community-set').filter({has:page.getByRole('heading',{name:tag+' edited',exact:true})});
+ assert.match(await editCard.innerText(),/Original Quizlet set creator: Source Author/);assert.match(await editCard.innerText(),/Quizlet Gravity set creator: Test Editor/);
+ const customCard=page.locator('.community-set').filter({has:page.getByRole('heading',{name:tag+' custom',exact:true})});assert.match(await customCard.innerText(),/Quizlet Gravity set creator: Test Editor/);assert.doesNotMatch(await customCard.innerText(),/Original Quizlet/);
+ await editCard.click();await page.getByText('Quizlet Gravity set creator: Test Editor',{exact:true}).waitFor();
+ await page.setViewportSize({width:390,height:844});assert(await page.getByText('Quizlet Gravity set creator: Test Editor',{exact:true}).isVisible());
+ await page.goto(base+'/create-set');await page.getByRole('button',{name:'Edit a Quizlet set',exact:true}).waitFor();
+ await page.route('**/api/import-quizlet',route=>route.fulfill({json:{title:tag,cards,sharedId:sourceId,sharePath:'/sets/'+sourceId}}));
+ await page.getByRole('button',{name:'Edit a Quizlet set',exact:true}).click();
+ await page.locator('#quizlet-url-input').fill('https://quizlet.com/987654321/test-flash-cards');
+ await page.locator('.GravityImportQuizlet-fetch').click();
+ await page.getByLabel('Row 1 term',{exact:true}).waitFor();
+ assert(await page.getByRole('button',{name:'Create shared link',exact:true}).isDisabled());
+ assert(await page.getByRole('button',{name:'Start studying',exact:true}).isDisabled());
+ assert(await page.getByRole('link',{name:'open the original set and leaderboard'}).isVisible());
+ await page.getByLabel('Row 2 definition',{exact:true}).fill('Lune');
+ assert(await page.getByRole('button',{name:'Create shared link',exact:true}).isEnabled());
+ await page.getByRole('button',{name:'Create shared link',exact:true}).click();
+ await page.getByLabel('Shared set link',{exact:true}).waitFor();
+ assert((await page.getByLabel('Shared set link',{exact:true}).inputValue()).includes(edit.data.public_id));
+ console.log('PASS: unchanged imports reuse original, edited imports save trusted dual attribution, custom sets credit Gravity creator, invalid source rejected, original unchanged, desktop/mobile labels verified.');
+}finally{
+ await browser.close();
+ for(const id of createdIds)await db.query('DELETE FROM shared_sets WHERE id=$1',[id]);
+ if(sourceId)await db.query('DELETE FROM shared_sets WHERE id=$1',[sourceId]);
+ if(uid)await db.query('DELETE FROM "user" WHERE id=$1',[uid]);
+ await db.end();
+}

@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import {canonicalCards} from '@/lib/community/set-content';
 import { quizletPasteValue } from '@/lib/gravity/quizlet-share-input';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -37,8 +39,8 @@ const PROGRESS_TICK_MS = 150;
 const PROGRESS_FADE_MS = 700;
 
 export function ImportScreen({ onStart }: Props) {
-  const [original,setOriginal]=useState<{id:string;snapshot:string}>();
-  const [tab, setTab] = useState<ImportTab>('quizlet');
+  const [original,setOriginal]=useState<{id:string;snapshot:string;path:string}>();
+  const [tab, setTab] = useState<ImportTab>('paste');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,13 +120,13 @@ export function ImportScreen({ onStart }: Props) {
   }, []);
 
   const applyQuizletResult = useCallback(
-    (data: { title?: unknown; cards?: unknown; skipped?: unknown; sharedId?:string }) => {
+    (data: { title?: unknown; cards?: unknown; skipped?: unknown; sharedId?:string; sharePath?:string }) => {
       const importedTerms = importedCardsToTerms(data?.cards);
       if (importedTerms === null) throw new Error(STRINGS.import.quizlet.error_generic);
       if (importedTerms.length < 2) throw new Error(STRINGS.import.error_single);
       setStructuredImport(true);
       setTerms(importedTerms);
-      setOriginal(data.sharedId?{id:data.sharedId,snapshot:JSON.stringify(importedTerms.map(t=>({term:t.word.trim(),definition:t.definition.trim()})))}:undefined);
+      setOriginal(data.sharedId&&data.sharePath?{id:data.sharedId,snapshot:canonicalCards(importedTerms.map(t=>({term:t.word.trim(),definition:t.definition.trim()}))),path:data.sharePath}:undefined);
       // This text is only an editable view; it is parsed after an explicit edit.
       setText(importedTerms.map((card) => `${card.word}\t${card.definition}`).join('\n'));
       const title = typeof data?.title === 'string' ? data.title : 'Quizlet set';
@@ -217,7 +219,7 @@ export function ImportScreen({ onStart }: Props) {
     tab: ImportTab;
     separator: Separator;
     structuredImport: boolean;
-  }>({ text: '', tab: 'quizlet', separator: 'comma', structuredImport: false });
+  }>({ text: '', tab: 'paste', separator: 'comma', structuredImport: false });
   if (
     lastSource.text !== text ||
     lastSource.tab !== tab ||
@@ -248,6 +250,7 @@ export function ImportScreen({ onStart }: Props) {
   const handleFile = useCallback(async (file: File) => {
     try {
       const content = await readFileAsText(file);
+      setOriginal(undefined);
       setStructuredImport(false);
       setText(content);
       setFileName(file.name);
@@ -357,7 +360,7 @@ export function ImportScreen({ onStart }: Props) {
                 aria-expanded={quizletOpen}
                 aria-controls="quizlet-import-panel"
               >
-                {STRINGS.import.quizlet.button}
+                Edit a Quizlet set
               </button>
 
               <div className="GravityImportTabs">
@@ -431,7 +434,7 @@ export function ImportScreen({ onStart }: Props) {
                       : STRINGS.import.quizlet.fetch_button}
                   </button>
                 </div>
-                <p className="GravityImportQuizlet-hint">{STRINGS.import.quizlet.hint}</p>
+                <p className="GravityImportQuizlet-hint">Import a set to edit its terms. To play the original, use <Link href="/sets">Sets</Link>. Your edited version keeps the original creator’s credit.</p>
 
                 {quizletProgress !== null && <ImportProgress progress={quizletProgress} busy={quizletBusy}/>}
 
@@ -590,13 +593,14 @@ export function ImportScreen({ onStart }: Props) {
               <button
                 className="UIButton UIButton--hero"
                 onClick={handleStart}
-                disabled={terms.length < 2}
+                disabled={terms.length < 2 || (!!original && original.snapshot === canonicalCards(shareCards))}
               >
                 {STRINGS.import.start_button}
               </button>
               <button
                 className="UIButton UIButton--default"
                 onClick={() => {
+                  setOriginal(undefined);
                   setStructuredImport(false);
                   setText('');
                   setFileName(null);
