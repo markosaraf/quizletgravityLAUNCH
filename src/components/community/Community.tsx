@@ -1,10 +1,11 @@
 'use client';
 import Link from 'next/link';
+import {ImportProgress, progressAfterMs} from '@/components/gravity/ImportProgress';
 import {ThemeToggle} from './ThemeToggle';
 import {sharedSetPath} from '@/lib/community/set-links';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { authClient } from '@/lib/community/auth-client';
 import './community.css';
 import { quizletPasteValue } from '@/lib/gravity/quizlet-share-input';
@@ -26,20 +27,30 @@ function ImportQuizletSet(){
  const router=useRouter();
  const savedUrl=useSyncExternalStore(subscribeImportUrl,getImportUrl,getServerImportUrl);
  const [draft,setUrl]=useState<string|null>(null);const url=draft??savedUrl;const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [accountOpen,setAccountOpen]=useState(false);
+ const [progress,setProgress]=useState<number|null>(null);
+ const requestRef=useRef<AbortController|null>(null);
+ useEffect(()=>()=>requestRef.current?.abort(),[]);
  async function importSet(){
-  if(!url.trim())return;
-  setBusy(true);setError('');
+  if(!url.trim()||requestRef.current)return;
+  const controller=new AbortController();requestRef.current=controller;
+  let ticker:ReturnType<typeof setInterval>|undefined;
+  const timeout=setTimeout(()=>controller.abort(),75000);
+  setBusy(true);setError('');setProgress(null);
   try{
    const session=await authClient.getSession();
+   if(controller.signal.aborted)return;
    if(!session.data){setAccountOpen(true);return;}
-   const response=await fetch('/api/import-quizlet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim()})});
+   setProgress(0);const startedAt=Date.now();
+   ticker=setInterval(()=>setProgress(progressAfterMs(Date.now()-startedAt)),150);
+   const response=await fetch('/api/import-quizlet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url.trim()}),signal:controller.signal});
    const result=await response.json();
    if(!response.ok)throw Error(result.error||'Unable to import this set.');
    if(!result.sharedId)throw Error('The set could not be saved. Please try again.');
+   clearInterval(ticker);setProgress(100);
    sessionStorage.removeItem('gravity-import-url');router.push(result.sharePath);
-  }catch(e){setError(e instanceof Error?e.message:'Please try again.');}finally{setBusy(false);}
+  }catch(e){setProgress(null);setError(controller.signal.aborted?'The import took too long. Please try again.':e instanceof Error?e.message:'Please try again.');}finally{clearInterval(ticker);clearTimeout(timeout);requestRef.current=null;setBusy(false);}
  }
- return <section className="community-import"><form onSubmit={e=>{e.preventDefault();void importSet();}}><label htmlFor="quizlet-set-url">Import a Quizlet set</label><div className="community-import-row"><input id="quizlet-set-url" type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false} required placeholder="Quizlet link or shared text" onPaste={e=>{e.preventDefault();const value=quizletPasteValue(e.clipboardData.getData('text/plain'));setUrl(value);sessionStorage.setItem('gravity-import-url',value);}} value={url} onChange={e=>{setUrl(e.target.value);sessionStorage.setItem('gravity-import-url',e.target.value);}} aria-label="Quizlet set link"/><button className="community-primary" disabled={busy||!url.trim()}>{busy?'Importing…':'Import set'}</button></div></form>{error&&<p role="alert">{error}</p>}<AccountDialog open={accountOpen} onOpenChange={setAccountOpen} onDone={()=>void importSet()}/></section>;
+ return <section className="community-import"><form onSubmit={e=>{e.preventDefault();void importSet();}}><label htmlFor="quizlet-set-url">Import a Quizlet set</label><div className="community-import-row"><input id="quizlet-set-url" type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false} required placeholder="Quizlet link or shared text" onPaste={e=>{e.preventDefault();const value=quizletPasteValue(e.clipboardData.getData('text/plain'));setUrl(value);sessionStorage.setItem('gravity-import-url',value);}} value={url} onChange={e=>{setUrl(e.target.value);sessionStorage.setItem('gravity-import-url',e.target.value);}} aria-label="Quizlet set link"/><button className="community-primary" disabled={busy||!url.trim()}>{busy?'Importing…':'Import set'}</button></div></form>{progress!==null&&<ImportProgress progress={progress} busy={busy}/>} {error&&<p role="alert">{error}</p>}<AccountDialog open={accountOpen} onOpenChange={setAccountOpen} onDone={()=>void importSet()}/></section>;
 }
 export function AccountPanel({onDone}:{onDone?:()=>void}){
  const {data:session}=authClient.useSession();const [mode,setMode]=useState<'guest'|'login'|'signup'|'reset'|'verify'>('guest');const [username,setUsername]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const [config,setConfig]=useState({google:false,recovery:false});

@@ -13,6 +13,7 @@ import {
 } from '@/lib/gravity/parse';
 import type { Separator } from '@/lib/gravity/parse';
 import { importedCardsToTerms } from '@/lib/gravity/import-cards';
+import { ImportProgress, progressAfterMs } from './ImportProgress';
 import { ThemeToggle } from '@/components/community/ThemeToggle';
 import { ShareSet } from '@/components/community/Community';
 import { STRINGS, format } from '@/lib/gravity/strings';
@@ -26,13 +27,6 @@ const SAMPLE = 'helio-, sun\ngeo-, earth\nbio-, life\nchrom-, color';
 
 const SEPARATOR_ORDER: Separator[] = ['comma', 'semicolon', 'dash'];
 type ImportTab = 'quizlet' | 'paste' | 'file';
-
-/** Progress-bar animation: elapsed time (ms) → whole-number percentage
- *  0–97. Exponential ease — moves fast at first (the import usually finishes
- *  in 1–5 s) and creeps slowly later, so the bar never looks frozen during a
- *  request. 100% is only ever shown on real completion. */
-const progressAfterMs = (elapsedMs: number): number =>
-  Math.round(Math.min(97, 100 * (1 - Math.exp(-elapsedMs / 11_000))));
 
 /** Hard client-side cap — matches the server's 60 s function budget with
  *  headroom, so a hung request can never freeze the UI forever. */
@@ -439,40 +433,7 @@ export function ImportScreen({ onStart }: Props) {
                 </div>
                 <p className="GravityImportQuizlet-hint">{STRINGS.import.quizlet.hint}</p>
 
-                {/* Animated progress bar — shown from the moment Import is
-                    clicked until the request settles, so it's always obvious
-                    that something is happening during long imports. */}
-                {quizletProgress !== null ? (
-                  <div className="GravityImportQuizlet-progress" role="status" aria-live="polite">
-                    <div className="GravityImportQuizlet-progressHeader">
-                      <span className="GravityImportQuizlet-progressLabel">
-                        {quizletProgress >= 100
-                          ? STRINGS.import.quizlet.progress_done
-                          : STRINGS.import.quizlet.progress_label}
-                      </span>
-                      <span className="GravityImportQuizlet-progressPct">
-                        {quizletProgress}%
-                      </span>
-                    </div>
-                    <div
-                      className="GravityImportQuizlet-progressTrack"
-                      role="progressbar"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={Math.round(quizletProgress)}
-                    >
-                      <div
-                        className="GravityImportQuizlet-progressFill"
-                        style={{ width: `${quizletProgress}%` }}
-                      />
-                    </div>
-                    {quizletBusy ? (
-                      <p className="GravityImportQuizlet-progressHint">
-                        {STRINGS.import.quizlet.progress_hint}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
+                {quizletProgress !== null && <ImportProgress progress={quizletProgress} busy={quizletBusy}/>}
 
                 {quizletStatus ? (
                   <div className="GravityImportQuizlet-status" role="status">
