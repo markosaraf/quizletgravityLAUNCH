@@ -50,11 +50,11 @@ const poppins = Poppins({
    for the rationale).
 ---------------------------------------------------------------------------- */
 const TITLE_LONG = "Quizzlet Gravity Preview | Shared Sets & Leaderboards";
-const TITLE_SHORT = "Quizlet – Gravity Mode";
+const TITLE_SHORT = "Quizzlet Gravity | Shared Sets & Leaderboards";
 const DESC_LONG =
-  "Import a public Quizlet set link, paste a term list, or upload a CSV to play Quizlet's recreated Gravity mode. Defend your planet from falling asteroids by typing the correct answers.";
+  "Find and import Quizlet sets, create your own flashcards, and share a set link. Play as a guest or sign in and compete on each set’s high-score leaderboard.";
 const DESC_SHORT =
-  "Import a public Quizlet set link, paste a term list, or upload a CSV to play. Defend your planet from falling asteroids by typing the correct answers.";
+  "Find, create and share study sets. Defend your planet with correct answers and compete with friends on shared-set leaderboards.";
 
 /* ----------------------------------------------------------------------------
    Entity dates — used in JSON-LD (datePublished / dateModified).
@@ -62,7 +62,7 @@ const DESC_SHORT =
    change. Update DATE_MODIFIED whenever you change on-page content.
 ---------------------------------------------------------------------------- */
 const DATE_PUBLISHED = "2026-09-04"; // first commit / site launch
-const DATE_MODIFIED = "2026-10-17";  // Quizlet link import added to descriptions
+const DATE_MODIFIED = "2026-11-06";  // Shared sets, accounts and leaderboard FAQ refreshed
 
 /* ----------------------------------------------------------------------------
    OG IMAGES — TWO-CHANNEL STRATEGY. Read this before touching anything.

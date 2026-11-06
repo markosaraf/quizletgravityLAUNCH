@@ -20,26 +20,29 @@ import "./seo-content.css";
 
 /** Feature list — also fed into the VideoGame JSON-LD in layout.tsx. */
 export const GAME_FEATURES: string[] = [
-  "7 terms per level, asteroid fall speed scales with level",
+  "Search shared study sets by title or original Quizlet set creator",
+  "Import public Quizlet links, including text copied from the Quizlet app",
+  "Create sets from pasted terms or CSV files",
+  "Share a set link and compete on its persistent leaderboard",
+  "Repeated imports of the same Quizlet set reuse one shared set and leaderboard",
+  "Play as a named guest or sign in with an account",
+  "Email verification, password recovery and Google sign-in",
+  "One personal best per player on each shared-set leaderboard",
   "5 difficulty levels: Sloth, Easy, Medium, Hard, Mad Max",
-  "Editable terms table — fix mis-parses, star terms to focus on them",
-  "Copy-the-answer modal on a miss — miss a term twice and the game ends",
-  "Session leaderboard ranking every try",
-  "Dark and light mode, persisted across reloads",
-  "Import terms by pasting, or by uploading a CSV file",
-  "Comma, semicolon, or dash separator options",
-  "Shared sets, named guests, accounts and persistent leaderboards",
+  "Editable terms and Starred-only study mode for custom games",
+  "Copy the correct answer after a miss; miss the same term twice and the game ends",
+  "Light and dark themes in the website and Android and iOS preview apps",
 ];
 
-/** How-to-play steps — also fed into the HowTo JSON-LD in page.tsx. */
+/** Visible instructions and HowTo structured data share these strings. */
 export const HOW_TO_STEPS: string[] = [
-  "Paste your terms and definitions (one per line) into the text area, or upload a CSV file. Pick your separator: comma, semicolon, or dash.",
-  "Edit any mis-parsed rows in the terms table. Star individual terms to study them in Starred-only mode.",
-  "Click Start studying, choose your difficulty and which side to answer with, then click Start.",
-  "Type the answer to destroy each asteroid before it reaches your planet.",
-  "If you miss one, type the correct answer to keep playing. Miss the same term twice and the game is over.",
-  "Don't know an answer? Press ESC to skip it.",
-  "Asteroids fall faster as you level up. Good luck!",
+  "Start in Sets. Search by set title or original Quizlet set creator, or paste a public Quizlet set link into Import a Quizlet set. Text copied with the link from the Quizlet app also works.",
+  "To use your own material, open Create set. Paste terms and definitions or upload a CSV, then check the editable terms table. You need at least two term/definition pairs.",
+  "Choose a guest username or sign in to import and share sets or join a shared-set leaderboard. You can create an account with email and password or continue with Google. Email/password accounts require email confirmation.",
+  "For your own shared set, enter a title under Share this set and choose Create shared link. Open the set and leaderboard, then use Copy set link to invite others. An imported Quizlet set already has its shared page.",
+  "Choose Play this set on a shared page to play for its leaderboard. For a local custom game, choose Start studying. Select your difficulty and answer side, then start.",
+  "Type the correct answers before the asteroids hit your planet. After a missed term, type the displayed answer to continue. Missing the same term twice ends the game.",
+  "At game over, a completed shared-set game is submitted to its leaderboard. Your highest score is kept. Sign in with the same account on another device to keep playing under the same identity.",
 ];
 
 export interface FaqItem {
@@ -47,47 +50,77 @@ export interface FaqItem {
   answer: string;
 }
 
-/** FAQ — also fed into the FAQPage JSON-LD in page.tsx. */
+/** FAQ answers also supply the FAQPage structured data. */
 export const FAQ_ITEMS: FaqItem[] = [
   {
-    question: "What is Quizlet Gravity?",
+    question: "What is Quizzlet Gravity?",
     answer:
-      "Quizlet Gravity is a free browser-based study game that faithfully recreates Quizlet's Gravity study mode (the 2020–2024 era version). You defend your planet from falling asteroids by typing the correct answers to your own terms before they land. Play locally, or choose a guest name or account to join shared-set leaderboards.",
+      "Quizzlet Gravity is a free study game inspired by Quizlet’s retired Gravity mode. Type answers to your flashcards to defend your planet from falling asteroids. This version adds searchable shared sets, accounts and persistent set leaderboards. It is an independent project and is not affiliated with Quizlet.",
   },
   {
-    question: "Do I need a Quizlet account to play?",
+    question: "How do I find a study set?",
     answer:
-      "No Quizlet account is required. Choose a guest name or create a Quizzlet Gravity account to import and share sets or save leaderboard scores. Guest identity stays in this browser; an account works across devices.",
+      "The website and apps open in Sets. Search by set title or original Quizlet set creator, then open a card to see its terms and leaderboard. You can also open a set link someone has shared with you.",
   },
   {
-    question: "How do I add my own study set?",
+    question: "How do I import a Quizlet set?",
     answer:
-      "Paste your terms and definitions into the text area — one pair per line, separated by a comma, semicolon, dash, or tab — or upload a CSV file. The first column is the term and the second is the definition. You need at least 2 term/definition pairs to start, and you can fix any mis-parsed rows in the editable terms table before playing.",
+      "Paste a public Quizlet set link into Import a Quizlet set and choose Import set. You can paste the full sharing text copied from the Quizlet app, including the words around the link. Choose a guest username or sign in when prompted. The imported set shows its title and original Quizlet set creator.",
+  },
+  {
+    question: "What if someone has already imported the same Quizlet set?",
+    answer:
+      "Importing the same Quizlet set again opens its existing shared page. It uses the same link and leaderboard, so scores are not split across duplicate imports. The shared set is a saved copy, not a live connection that automatically follows edits on Quizlet.",
+  },
+  {
+    question: "How do I create my own set?",
+    answer:
+      "Open Create set and paste terms and definitions, one pair per line, or upload a CSV. Commas, semicolons, dashes and tabs are supported as separators. Check and edit the terms before playing. You need at least two pairs, and you can star terms for Starred-only practice.",
+  },
+  {
+    question: "How do I share a set with friends?",
+    answer:
+      "For a custom set, enter a title under Share this set, choose a guest username or sign in, then select Create shared link. Open the set and leaderboard and choose Copy set link. Imported Quizlet sets already have a shared page. Anyone with the link can open the set and join its leaderboard after choosing a guest username or signing in.",
+  },
+  {
+    question: "Do I need an account?",
+    answer:
+      "You do not need a Quizlet account. You can browse shared sets and practise with your own pasted terms without signing up. To import, share or record scores on a shared set, choose a guest username or sign in to Quizzlet Gravity. A registered account lets you use the same identity across devices.",
+  },
+  {
+    question: "What is the difference between a guest and an account?",
+    answer:
+      "Guests can import sets, share links and appear on leaderboards without an email or password. Their identity is tied to the current browser or app session and can be lost when its data is cleared. An account lets you sign in again and access your leaderboard identity across devices. Creating an account from your active guest session transfers its scores to the account.",
+  },
+  {
+    question: "How do email confirmation and password recovery work?",
+    answer:
+      "When you create an account with email and password, open the confirmation email before signing in. Check your spam folder or use Resend confirmation if needed. If you forget your password, choose Forgot password? to request a recovery link at your account’s email address. Continue with Google is another way to sign in.",
+  },
+  {
+    question: "Which games count towards a leaderboard?",
+    answer:
+      "Open a shared set and choose Play this set while using a guest username or account. At game over, the completed game is submitted and your highest score for that set is kept, with its level and difficulty. Each player has one personal best per shared set across all difficulties. Local custom games and games abandoned before game over do not add a completed score to that shared leaderboard.",
   },
   {
     question: "How does scoring work?",
     answer:
-      "Correct answers earn points that scale with your streak of consecutive correct answers and with the current gravity level: 20 × streak + 150 × (1 + level bonus). Wrong answers subtract 10 points. A shared set has a persistent leaderboard showing each player’s highest completed-game score and difficulty.",
+      "Correct answers earn points based on your consecutive-answer streak and the game’s gravity bonus. Wrong answers subtract 10 points, without taking your score below zero. A shared-set leaderboard keeps your personal best rather than adding all your attempts together.",
   },
   {
-    question: "What are the difficulty levels?",
+    question: "What are the difficulty levels, and what happens when I miss?",
     answer:
-      "There are 5 difficulties: Sloth, Easy, Medium, Hard, and Mad Max. Sloth, Easy, and Medium start at Earth gravity (9.8) with a 17-second asteroid interval. Hard starts at gravity 11 with a 3.5-second interval, and Mad Max starts at gravity 12.2 with asteroids spawning every 0.7 seconds. Gravity increases by 0.2 per level on Medium and above.",
+      "Choose Sloth, Easy, Medium, Hard or Mad Max. Difficulty changes the pace and behaviour of the asteroids. When an asteroid lands, type the displayed correct answer to continue. Missing the same term twice ends the game.",
   },
   {
-    question: "What happens when I miss an asteroid?",
+    question: "Can I play on my phone or tablet?",
     answer:
-      "When an asteroid lands, a copy-the-answer modal appears and you must type the correct answer to keep playing. If you miss the same term twice, the game is over. If you don't know an answer, press ESC to skip it.",
+      "Yes. You can play in a mobile browser or in the Android and iOS preview apps. Shared set links and leaderboards use the same service. Sign in with the same account to use your leaderboard identity across devices. Both light and dark themes are available.",
   },
   {
-    question: "Does it work on mobile?",
+    question: "Which information is public, and where is it stored?",
     answer:
-      "Yes. The layout is fully responsive: the sidebar collapses and the game controls move into the top bar on narrow screens. It also has a dark and light mode toggle that persists across reloads.",
-  },
-  {
-    question: "Is my data private?",
-    answer:
-      "Shared and imported sets, creator names, player names and leaderboard scores are public. Account emails and passwords are not public. Unsaved pasted terms and preferences stay in this browser. Only share material you are entitled to share. Read the privacy page for details.",
+      "Imported and shared sets, their titles and terms, creator attribution, leaderboard usernames and scores are public and stored online. Account emails are private, and passwords are stored as hashes rather than readable text. Pasted or CSV terms stay on your device until you choose to share them. Guest access depends on your browser or app session. Only share material you have permission to share.",
   },
 ];
 
@@ -102,8 +135,8 @@ export function HowToSection() {
         </h2>
         <p className="GravitySEO-subtitle">
           Defend your planet from incoming asteroids by typing the correct
-          answers before they land. It takes about a minute to set up a game
-          with your own terms.
+          answers before they land. Find a shared set, import from Quizlet,
+          or create your own and invite friends to its leaderboard.
         </p>
         <ol className="GravitySEO-steps">
           {HOW_TO_STEPS.map((step, i) => (
@@ -126,7 +159,7 @@ export function FaqSection() {
           Frequently asked questions
         </h2>
         <p className="GravitySEO-subtitle">
-          Everything about how the game works, importing terms, scoring, and
+          Find out about sets, importing, sharing, accounts, leaderboards and
           privacy.
         </p>
         <div className="GravitySEO-faqList">
@@ -144,7 +177,7 @@ export function FaqSection() {
 
 /** Always present on the Sets landing pages, including before hydration. */
 export function SetsLandingHelp({path = "/"}: {path?: string}) {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizletgravity.com";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://quizzlet-gravity-preview.vercel.app";
   const url = new URL(path, siteUrl).href;
   const structuredData = [
     {

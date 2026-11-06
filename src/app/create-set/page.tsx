@@ -23,19 +23,19 @@ import {
   HOW_TO_STEPS,
 } from '../seo-content';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://quizletgravity.com';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://quizzlet-gravity-preview.vercel.app';
 
 export default function Home() {
   // ---- FAQPage structured data (mirrors the visible FAQ section) ----
   const faqJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    '@id': `${siteUrl}/#faq`,
-    url: `${siteUrl}/`,
-    name: 'Quizlet Gravity — Frequently asked questions',
+    '@id': `${siteUrl}/create-set#faq`,
+    url: `${siteUrl}/create-set`,
+    name: 'Quizzlet Gravity — Frequently asked questions',
     mainEntity: FAQ_ITEMS.map(({ question, answer }) => ({
       '@type': 'Question',
-      '@id': `${siteUrl}/#faq-${question.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      '@id': `${siteUrl}/create-set#faq-${question.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       name: question,
       acceptedAnswer: {
         '@type': 'Answer',
@@ -51,10 +51,10 @@ export default function Home() {
   const howToJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'HowTo',
-    '@id': `${siteUrl}/#howto`,
-    name: 'How to play Quizlet Gravity',
+    '@id': `${siteUrl}/create-set#howto`,
+    name: 'How to play Quizzlet Gravity',
     description:
-      "Import a public Quizlet set link, paste a term list, or upload a CSV to play Quizlet's Gravity study mode. Defend your planet from falling asteroids by typing the correct answers.",
+      "Find or import a shared set, or create your own with pasted terms or a CSV. Play as a guest or sign in, share a set link and compete on its leaderboard.",
     step: HOW_TO_STEPS.map((text, i) => ({
       '@type': 'HowToStep',
       position: i + 1,
@@ -76,11 +76,11 @@ export default function Home() {
           needing JavaScript. */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c") }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(howToJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(howToJsonLd).replace(/</g, "\\u003c") }}
       />
     </>
   );
