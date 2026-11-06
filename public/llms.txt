@@ -99,3 +99,5 @@ Imported and shared sets, their titles and terms, creator attribution, leaderboa
 - Sets: https://quizzlet-gravity-preview.vercel.app/sets
 - Create set: https://quizzlet-gravity-preview.vercel.app/create-set
 - FAQ: https://quizzlet-gravity-preview.vercel.app/#faq
+
+Moderation: An administrator may manually delete accounts or shared sets used for spam, abusive usernames or abusive content. Deleted accounts lose access. Existing leaderboard entries display Deleted user. Deleting a set removes its leaderboard.

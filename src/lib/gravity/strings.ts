@@ -84,7 +84,7 @@ export const STRINGS = {
     title: 'Quizlet Gravity',
     subtitle:
       'Paste your terms and definitions (one per line) or upload a CSV file to start studying.',
-    paste_tab: 'Paste terms',
+    paste_tab: 'Write your own',
     file_tab: 'Upload CSV',
     paste_placeholder: 'term, definition\nterm, definition\n…',
     file_label: 'Click to choose a CSV file',

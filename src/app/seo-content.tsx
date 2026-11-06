@@ -53,6 +53,10 @@ export interface FaqItem {
 /** FAQ answers also supply the FAQPage structured data. */
 export const FAQ_ITEMS: FaqItem[] = [
   {
+    question: "Can accounts or shared sets be removed?",
+    answer: "An administrator may manually delete accounts or shared sets used for spam, abusive usernames or abusive content. Deleted accounts lose access and their existing leaderboard entries display Deleted user instead of their username. Deleting a set also removes its leaderboard. Moderation decisions are made manually.",
+  },
+  {
     question: "What is Quizzlet Gravity?",
     answer:
       "Quizzlet Gravity is a free study game inspired by Quizlet’s retired Gravity mode. Type answers to your flashcards to defend your planet from falling asteroids. This version adds searchable shared sets, accounts and persistent set leaderboards. It is an independent project and is not affiliated with Quizlet.",

@@ -52,3 +52,5 @@ body{background:#2e384f url('/assets/gravity/intro-bg@2x.jpg') no-repeat bottom 
 /* The shadow is outer-only, so translucent card surfaces keep their original colour. */
 .community-page .community-set:focus-visible{outline:none}
 @media(prefers-reduced-motion:reduce){.community-set{transition:none}}
+
+.admin-list{list-style:none;padding:0;margin:24px 0}.admin-list li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--community-border)}.admin-list li>div{min-width:0;overflow-wrap:anywhere}.admin-list small{display:block;color:var(--community-muted);margin-top:4px}.admin-list button{flex-shrink:0}

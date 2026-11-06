@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import {useAdmin} from './Admin';
 import {canonicalCards} from '@/lib/community/set-content';
 import {ImportProgress, progressAfterMs} from '@/components/gravity/ImportProgress';
 import {ThemeToggle} from './ThemeToggle';
@@ -18,8 +19,9 @@ function AccountDialog({open,onOpenChange,onDone}:{open:boolean;onOpenChange:(op
  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal><Dialog.Overlay className="community-dialog-overlay"/><Dialog.Content className="community-dialog" aria-describedby={undefined}><Dialog.Title className="sr-only">Player account</Dialog.Title><Dialog.Close className="community-dialog-close" aria-label="Close account">×</Dialog.Close><AccountPanel onDone={()=>{onOpenChange(false);onDone?.();}}/></Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 export function CommunityNav(){
+ const admin=useAdmin();
  const {data:session}=authClient.useSession();const [open,setOpen]=useState(false);
- return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity</Link><div><Link href="/create-set">Create set</Link><Link href="/sets" className="community-nav-sets">Sets</Link><button aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)}>{session?.user.displayUsername||session?.user.username||session?.user.name||'Choose username'}</button></div></nav><AccountDialog open={open} onOpenChange={setOpen}/></>;
+ return <><nav className="community-nav"><Link href="/" className="community-brand"><img src="/tab-gold.svg" alt="" width={30} height={30}/>Quizzlet Gravity</Link><div>{admin&&<Link href="/admin/users">Users</Link>}<Link href="/create-set" className={admin?'community-nav-sets':undefined}>Create set</Link><Link href="/sets" className="community-nav-sets">Sets</Link><button aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)}>{session?.user.displayUsername||session?.user.username||session?.user.name||'Choose username'}</button></div></nav><AccountDialog open={open} onOpenChange={setOpen}/></>;
 }
 const subscribeImportUrl=()=>()=>{};
 const getImportUrl=()=>sessionStorage.getItem('gravity-import-url')||'';
