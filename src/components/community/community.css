@@ -36,11 +36,6 @@ body{background:#2e384f url('/assets/gravity/intro-bg@2x.jpg') no-repeat bottom 
 
 .community-directory-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px}
 .community-directory-heading h1{margin:0}
-.community-theme{display:flex;align-items:center;gap:6px;flex-shrink:0;color:var(--community-text);margin-bottom:12px}
 .community-directory-heading .community-theme{margin-bottom:0}
-.community-theme span{font-size:13px;margin-right:4px}
-.community-theme button{font:inherit;font-size:14px;min-height:44px;padding:8px 12px;border:1px solid var(--community-border);border-radius:4px;color:var(--community-link);background:transparent;cursor:pointer;touch-action:manipulation;transition:none}
-.community-theme button[aria-pressed=true]{background:var(--community-accent);color:var(--community-selected);border-color:var(--community-accent)}
-.community-theme button:focus-visible{outline:2px solid var(--community-link);outline-offset:2px}
 .gravity-theme-changing *, .gravity-theme-changing *::before, .gravity-theme-changing *::after{transition:none!important}
-@media(max-width:600px){.community-directory-heading{gap:10px}.community-directory-heading h1{font-size:23px;flex:1;min-width:140px}.community-theme{gap:4px}.community-theme span{display:none}.community-theme button{padding:8px}.community-nav>div>a{white-space:nowrap}.community-nav button{max-width:44%;}}
+@media(max-width:600px){.community-directory-heading{gap:10px}.community-directory-heading h1{font-size:23px;flex:1;min-width:140px}.community-nav>div>a{white-space:nowrap}.community-nav button{max-width:44%;}}

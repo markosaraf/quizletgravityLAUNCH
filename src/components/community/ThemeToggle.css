@@ -1,0 +1,59 @@
+/* One control on Sets and Create set, independent of surrounding form styles. */
+.community-theme {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-shrink:0;
+  margin-bottom:12px;
+  color:var(--community-text);
+  font-family:hurmegeosans,Arial,sans-serif;
+}
+.community-theme > span {
+  font-size:13px;
+  font-weight:600;
+  line-height:20px;
+  margin-right:4px;
+}
+.community-theme > button[aria-pressed] {
+  box-sizing:border-box;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-family:hurmegeosans,Arial,sans-serif;
+  font-size:14px;
+  font-weight:600;
+  line-height:20px;
+  letter-spacing:normal;
+  text-transform:none;
+  width:64px;
+  height:44px;
+  min-height:44px;
+  padding:8px 12px;
+  margin:0;
+  border:1px solid var(--community-border);
+  border-radius:4px;
+  color:var(--community-link);
+  background:transparent;
+  cursor:pointer;
+  touch-action:manipulation;
+  transition:none;
+  box-shadow:none;
+}
+.community-theme > button[aria-pressed=false]:hover:not(:disabled) {
+  background:var(--community-hover);
+  border-color:var(--community-accent);
+}
+.community-theme > button[aria-pressed=true],
+.community-theme > button[aria-pressed=true]:hover:not(:disabled) {
+  background:var(--community-accent);
+  color:var(--community-selected);
+  border-color:var(--community-accent);
+}
+.community-theme > button[aria-pressed]:focus-visible {
+  outline:2px solid var(--community-link);
+  outline-offset:2px;
+}
+@media(max-width:600px) {
+  .community-theme {gap:4px}
+  .community-theme > span {display:none}
+}

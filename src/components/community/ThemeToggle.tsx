@@ -1,5 +1,6 @@
 'use client';
 
+import './ThemeToggle.css';
 import {useSyncExternalStore} from 'react';
 import {saveStoredTheme, type Theme} from '@/lib/gravity/parse';
 
